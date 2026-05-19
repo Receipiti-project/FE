@@ -3,5 +3,14 @@
     "source.fixAll": "explicit",
     "source.organizeImports": "explicit",
     "source.sortMembers": "explicit"
-  }
+  },
+  "cSpell.words": [
+    "chatbox",
+    "chatbubbles",
+    "Ionicon",
+    "kakao",
+    "Pressable",
+    "receipiti",
+    "scanline"
+  ]
 }
