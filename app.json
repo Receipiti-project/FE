@@ -45,6 +45,15 @@
         }
       ],
       [
+        "expo-share-intent",
+        {
+          "iosActivationRules": {
+            "NSExtensionActivationSupportsText": true
+          },
+          "androidIntentFilters": ["text/plain"]
+        }
+      ],
+      [
         "expo-image-picker",
         {
           "photosPermission": "영수증/캡처 이미지를 가계부에 등록하기 위해 사진 접근 권한이 필요합니다.",
