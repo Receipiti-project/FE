@@ -2,7 +2,6 @@ import { OPENAI_API_KEY } from "../constants/config";
 import { CategoryType, Currency, InputType } from './types';
 import { hasAllRequired } from './smsLexer';
 
-console.log("API KEY:", OPENAI_API_KEY);
 
 const CATEGORIES: CategoryType[] = ['FOOD', 'TRANSPORT', 'SHOPPING', 'CULTURE', 'HEALTH', 'ETC'];
 const CURRENCIES: Currency[] = ['KRW', 'USD', 'EUR', 'JPY'];
