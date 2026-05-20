@@ -1,51 +1,32 @@
-import { Audio } from 'expo-av';
+import { Ionicons } from '@expo/vector-icons';
+import { useAudioRecorder, AudioModule, RecordingPresets } from 'expo-audio';
 import { processVoice } from '../../scripts/voicePipeline';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { View, Text, StyleSheet, Pressable, TouchableOpacity } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState } from 'react';
 import { router } from 'expo-router';
+
+const HITSLOP = { top: 12, bottom: 12, left: 12, right: 12 } as const;
 
 export default function VoiceScreen() {
   const [recording, setRecording] = useState(false);
   const [result, setResult] = useState('');
+  const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
 
   const handleMic = async () => {
-    if (recording) return;
+    if (recording) {
+      try {
+        await audioRecorder.stop();
+        const uri = audioRecorder.uri;
 
-    try {
-      setRecording(true);
-      setResult('');
-
-      const { status } = await Audio.requestPermissionsAsync();
-      if (status !== 'granted') {
-        setResult('마이크 권한 필요');
-        setRecording(false);
-        return;
-      }
-
-      const recordingObj = new Audio.Recording();
-      await recordingObj.prepareToRecordAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY
-      );
-      await recordingObj.startAsync();
-
-      setTimeout(async () => {
-        await recordingObj.stopAndUnloadAsync();
-
-        const uri = recordingObj.getURI();
-
-        const file = {
-          uri,
-          name: 'audio.m4a',
-          type: 'audio/m4a',
-        };
-
+        const file = { uri, name: 'audio.m4a', type: 'audio/m4a' };
         const pipe = await processVoice(file);
         const e = pipe.data;
 
         const missing = [
-          e.amount == null    && 'amount',
-          !e.storeName        && 'storeName',
-          !e.category         && 'category',
+          e.amount == null && 'amount',
+          !e.storeName     && 'storeName',
+          !e.category      && 'category',
         ].filter(Boolean);
 
         setResult(
@@ -53,27 +34,38 @@ export default function VoiceScreen() {
           `가게명: ${e.storeName ?? '없음'}\n` +
           `결제일시: ${e.paymentDate}\n` +
           `카테고리: ${e.category ?? '없음'}\n` +
-          `메모: ${e.memo ?? '없음'}\n` +
-          `\n신뢰도: ${pipe.confidence} · ${pipe.elapsedMs}ms` +
+          `메모: ${e.memo ?? '없음'}` +
           (missing.length > 0
-            ? `\n⚠️ 비어 있는 항목: ${missing.join(', ')}`
+            ? `\n\n⚠️ 비어 있는 항목: ${missing.join(', ')}`
             : '')
         );
-
+      } catch (e: any) {
+        setResult('에러: ' + e.message);
+      } finally {
         setRecording(false);
-      }, 3000);
-
-    } catch (e: any) {
-      setResult('에러: ' + e.message);
-      setRecording(false);
+      }
+    } else {
+      try {
+        setResult('');
+        const { granted } = await AudioModule.requestRecordingPermissionsAsync();
+        if (!granted) {
+          setResult('마이크 권한 필요');
+          return;
+        }
+        await audioRecorder.prepareToRecordAsync();
+        audioRecorder.record();
+        setRecording(true);
+      } catch (e: any) {
+        setResult('에러: ' + e.message);
+      }
     }
   };
 
   return (
-    <View style={styles.container}>
-      <Pressable onPress={() => router.back()}>
-        <Text style={styles.back}>← 뒤로 가기</Text>
-      </Pressable>
+    <SafeAreaView style={styles.container}>
+      <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn} hitSlop={HITSLOP}>
+        <Ionicons name="chevron-back" size={22} color="#111827" />
+      </TouchableOpacity>
 
       <View style={styles.content}>
         <Text style={styles.title}>음성 입력</Text>
@@ -90,7 +82,7 @@ export default function VoiceScreen() {
         </Pressable>
 
         <Text style={styles.status}>
-          {recording ? '음성 인식 중입니다...' : '탭해서 시작'}
+          {recording ? '녹음 중... 탭해서 중지' : '탭해서 시작'}
         </Text>
 
         <View style={styles.resultBox}>
@@ -104,7 +96,7 @@ export default function VoiceScreen() {
         </View>
 
       </View>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -115,9 +107,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#F7F8FA',
   },
 
-  back: {
-    color: '#5B8CCB',
-    marginBottom: 10,
+  iconBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   content: {
