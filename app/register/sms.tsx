@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import React, { useState } from 'react';
 import {
@@ -7,8 +8,11 @@ import {
     ScrollView,
     StyleSheet,
     Text, TextInput,
+    TouchableOpacity,
     View,
 } from 'react-native';
+
+const HITSLOP = { top: 12, bottom: 12, left: 12, right: 12 } as const;
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { parseSms, hasAllRequired } from '../../scripts/smsLexer';
 import { PipelineResult, smsToExpense } from '../../scripts/smsPipeline';
@@ -69,9 +73,9 @@ export default function SmsTestScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <Pressable onPress={() => router.back()}>
-        <Text style={styles.back}>← 뒤로 가기</Text>
-      </Pressable>
+      <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn} hitSlop={HITSLOP}>
+        <Ionicons name="chevron-back" size={22} color="#111827" />
+      </TouchableOpacity>
 
       <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
         <Text style={styles.title}>문자 파싱</Text>
@@ -213,9 +217,12 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
 
-  back: {
-    color: '#5B8CCB',
-    marginBottom: 10,
+  iconBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   textarea: {
