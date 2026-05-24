@@ -3,7 +3,7 @@ import { useAudioRecorder, AudioModule, RecordingPresets } from 'expo-audio';
 import { processVoice } from '../../scripts/voicePipeline';
 import { View, Text, StyleSheet, Pressable, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { router } from 'expo-router';
 
 const HITSLOP = { top: 12, bottom: 12, left: 12, right: 12 } as const;
@@ -11,7 +11,15 @@ const HITSLOP = { top: 12, bottom: 12, left: 12, right: 12 } as const;
 export default function VoiceScreen() {
   const [recording, setRecording] = useState(false);
   const [result, setResult] = useState('');
+  const [permissionGranted, setPermissionGranted] = useState(false);
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+
+  useEffect(() => {
+    AudioModule.requestRecordingPermissionsAsync().then(({ granted }) => {
+      setPermissionGranted(granted);
+    });
+    audioRecorder.prepareToRecordAsync();
+  }, []);
 
   const handleMic = async () => {
     if (recording) {
@@ -24,9 +32,9 @@ export default function VoiceScreen() {
         const e = pipe.data;
 
         const missing = [
-          e.amount == null && 'amount',
-          !e.storeName     && 'storeName',
-          !e.category      && 'category',
+          e.amount == null && '결제금액',
+          !e.storeName     && '가게명',
+          !e.category      && '카테고리',
         ].filter(Boolean);
 
         setResult(
@@ -39,20 +47,19 @@ export default function VoiceScreen() {
             ? `\n\n⚠️ 비어 있는 항목: ${missing.join(', ')}`
             : '')
         );
+        await audioRecorder.prepareToRecordAsync();
       } catch (e: any) {
         setResult('에러: ' + e.message);
       } finally {
         setRecording(false);
       }
     } else {
+      if (!permissionGranted) {
+        setResult('마이크 권한 필요');
+        return;
+      }
       try {
         setResult('');
-        const { granted } = await AudioModule.requestRecordingPermissionsAsync();
-        if (!granted) {
-          setResult('마이크 권한 필요');
-          return;
-        }
-        await audioRecorder.prepareToRecordAsync();
         audioRecorder.record();
         setRecording(true);
       } catch (e: any) {
