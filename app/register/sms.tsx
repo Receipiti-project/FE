@@ -36,28 +36,6 @@ export default function SmsTestScreen() {
   const [pipe, setPipe] = useState<PipelineResult | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const runRegex = () => {
-    const t = input.trim();
-    if (!t) { Alert.alert('입력이 비어있어요'); return; }
-    setRegexResult(parseSms(t));
-    setPipe(null);
-  };
-
-  const runPipeline = async () => {
-    const t = input.trim();
-    if (!t) { Alert.alert('입력이 비어있어요'); return; }
-    setLoading(true);
-    setRegexResult(null);
-    try {
-      const r = await smsToExpense(t);
-      setPipe(r);
-    } catch (e: any) {
-      Alert.alert('LLM 호출 실패', e?.message ?? String(e));
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const pickSample = (sms: string) => {
     setInput(sms);
     setRegexResult(null);
@@ -136,23 +114,15 @@ export default function SmsTestScreen() {
             : <Text style={styles.scanText}>거래 내역 파싱</Text>}
         </Pressable>
 
-        {pipe && (
-          <View style={styles.totalBox}>
-            <Text style={styles.totalLabel}>
-              신뢰도: {pipe.confidence} · source: {pipe.source} · {pipe.elapsedMs}ms · llm={String(pipe.llmCalled)}
-            </Text>
-          </View>
-        )}
-
         {data && (
           <View style={styles.card}>
             <Text style={styles.section}>결과</Text>
             <View style={{ height: 8 }} />
-            <Row k="amount"      v={fmt(data.amount)} highlight />
-            <Row k="storeName"   v={fmt(data.storeName)} />
-            <Row k="paymentDate" v={fmt(data.paymentDate)} />
-            <Row k="category"    v={fmt(data.category)} />
-            <Row k="memo"        v={fmt(data.memo)} />
+            <Row k="결제금액"  v={fmt(data.amount)} highlight />
+            <Row k="가게명"    v={fmt(data.storeName)} />
+            <Row k="결제일시" v={fmt(data.paymentDate)} />
+            <Row k="카테고리" v={fmt(data.category)} />
+            <Row k="메모"      v={fmt(data.memo)} />
           </View>
         )}
 
@@ -162,24 +132,17 @@ export default function SmsTestScreen() {
               ⚠️ 일부 항목이 비어 있어요
             </Text>
             <Text style={{ color: '#92400E', fontSize: 13 }}>
-              {[
-                pipe.data.amount == null && 'amount',
-                !pipe.data.storeName    && 'storeName',
-                !pipe.data.category     && 'category',
-                !pipe.data.paymentDate  && 'paymentDate',
-              ].filter(Boolean).join(', ')} 가 없어요.
-              직접 입력 화면에서 채워주세요.
+              {'다음 항목이 없어요: ' + [
+                pipe.data.amount == null && '결제금액',
+                !pipe.data.storeName    && '가게명',
+                !pipe.data.category     && '카테고리',
+                !pipe.data.paymentDate  && '결제일시',
+              ].filter(Boolean).join(', ')}
+              {'\n직접 입력 화면에서 채워주세요.'}
             </Text>
   </View>
 )}
 
-        {data?._raw && (
-          <View style={styles.card}>
-            <Text style={styles.section}>_raw tokens</Text>
-            <View style={{ height: 8 }} />
-            <Text style={styles.mono}>{JSON.stringify(data._raw, null, 2)}</Text>
-          </View>
-        )}
       </ScrollView>
     </SafeAreaView>
   );
