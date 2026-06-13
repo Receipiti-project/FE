@@ -1,27 +1,28 @@
-import React, { useMemo, useState } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { Ionicons } from "@expo/vector-icons";
 import {
   ACTIVITY_ZONES,
-  TRANSACTIONS,
   formatKRW,
   formatTime,
   getCategory,
   todayRoute,
   topStores,
   Transaction,
+  TRANSACTIONS,
 } from "@/constants/mockData";
+import { Ionicons } from "@expo/vector-icons";
+import React, { useMemo, useRef, useState } from "react";
+import {
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import MapView, { Circle, Heatmap, Marker, Polyline, PROVIDER_GOOGLE } from "react-native-maps";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 const MODES = [
   { id: "today", label: "오늘 동선" },
-  { id: "heatmap", label: "소비 핀" },
+  { id: "heatmap", label: "히트맵" },
   { id: "zones", label: "생활권" },
 ] as const;
 type Mode = (typeof MODES)[number]["id"];
@@ -34,10 +35,39 @@ const TIME_RANGES = [
 ] as const;
 type TimeRangeId = (typeof TIME_RANGES)[number]["id"];
 
+const INITIAL_REGION = {
+  latitude: 37.530,
+  longitude: 126.998,
+  latitudeDelta: 0.13,
+  longitudeDelta: 0.10,
+};
+
+const MAP_COORDS: Record<string, { latitude: number; longitude: number }> = {
+  t1: { latitude: 37.5012, longitude: 127.0237 },
+  t2: { latitude: 37.5703, longitude: 126.9770 },
+  t3: { latitude: 37.5340, longitude: 127.0041 },
+  t4: { latitude: 37.4979, longitude: 127.0276 },
+  t5: { latitude: 37.5007, longitude: 127.0365 },
+  t6: { latitude: 37.5296, longitude: 126.9649 },
+  t7: { latitude: 37.5010, longitude: 127.0360 },
+  t9: { latitude: 37.4990, longitude: 127.0275 },
+};
+
+const ZONE_COORDS = [
+  { id: "gangnam",     label: "강남",  color: "#3B82F6", latitude: 37.5002, longitude: 127.0363, radiusMeters: 480 },
+  { id: "gwanghwamun", label: "광화문", color: "#A855F7", latitude: 37.5703, longitude: 126.9768, radiusMeters: 320 },
+  { id: "yongsan",     label: "용산",  color: "#10B981", latitude: 37.5296, longitude: 126.9651, radiusMeters: 180 },
+];
+
 export default function MapScreen() {
   const [mode, setMode] = useState<Mode>("today");
   const [selected, setSelected] = useState<Transaction | null>(null);
   const [timeRange, setTimeRange] = useState<TimeRangeId>("all");
+  const [latitudeDelta, setLatitudeDelta] = useState(INITIAL_REGION.latitudeDelta);
+  const mapRef = useRef<MapView>(null);
+
+  const ZONE_LABEL_ZOOM_THRESHOLD = 0.05;
+  const showZoneLabels = latitudeDelta < ZONE_LABEL_ZOOM_THRESHOLD;
 
   const route = todayRoute();
   const allPins = useMemo(
@@ -63,6 +93,21 @@ export default function MapScreen() {
       const h = new Date(t.datetime).getHours();
       return h >= activeRange.from && h < activeRange.to;
     });
+
+  const heatmapPoints = useMemo(() => {
+    return allPins
+      .filter((t) => {
+        if (!MAP_COORDS[t.id]) return false;
+        if (timeRange === "all") return true;
+        const h = new Date(t.datetime).getHours();
+        return h >= activeRange.from && h < activeRange.to;
+      })
+      .map((t) => ({
+        latitude: MAP_COORDS[t.id].latitude,
+        longitude: MAP_COORDS[t.id].longitude,
+        weight: Math.log10(t.amount + 1),
+      }));
+  }, [allPins, timeRange, activeRange]);
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
@@ -143,210 +188,151 @@ export default function MapScreen() {
 
         {/* 지도 영역 (mock) */}
         <View style={styles.mapWrap}>
-          <View style={styles.mapBg}>
-            {/* 격자 */}
-            {Array.from({ length: 6 }).map((_, i) => (
-              <View
-                key={`h-${i}`}
-                style={[styles.gridH, { top: `${(i / 5) * 100}%` }]}
-              />
-            ))}
-            {Array.from({ length: 6 }).map((_, i) => (
-              <View
-                key={`v-${i}`}
-                style={[styles.gridV, { left: `${(i / 5) * 100}%` }]}
-              />
-            ))}
-
-            {/* 도로 mock */}
-            <View style={[styles.road, { top: "32%", height: 14 }]} />
-            <View
-              style={[
-                styles.road,
-                { top: "60%", height: 10, backgroundColor: "#E5E7EB" },
-              ]}
-            />
-            <View
-              style={[
-                styles.roadV,
-                { left: "48%", width: 12 },
-              ]}
-            />
-
-            {/* 생활권 클러스터 (zones 모드) */}
-            {mode === "zones" && (
-              <>
-                <View
-                  style={[
-                    styles.zoneCircle,
-                    {
-                      left: "62%",
-                      top: "50%",
-                      width: 140,
-                      height: 140,
-                      marginLeft: -70,
-                      marginTop: -70,
-                      borderColor: "#3B82F6",
-                      backgroundColor: "rgba(59,130,246,0.18)",
-                    },
-                  ]}
-                />
-                <View
-                  style={[
-                    styles.zoneCircle,
-                    {
-                      left: "32%",
-                      top: "28%",
-                      width: 90,
-                      height: 90,
-                      marginLeft: -45,
-                      marginTop: -45,
-                      borderColor: "#A855F7",
-                      backgroundColor: "rgba(168,85,247,0.18)",
-                    },
-                  ]}
-                />
-                <View
-                  style={[
-                    styles.zoneCircle,
-                    {
-                      left: "28%",
-                      top: "58%",
-                      width: 70,
-                      height: 70,
-                      marginLeft: -35,
-                      marginTop: -35,
-                      borderColor: "#10B981",
-                      backgroundColor: "rgba(16,185,129,0.18)",
-                    },
-                  ]}
-                />
-                <View
-                  style={[
-                    styles.zoneTag,
-                    { left: "62%", top: "50%", marginLeft: -34, marginTop: -8 },
-                  ]}
-                >
-                  <Text style={[styles.zoneTagText, { color: "#1D4ED8" }]}>
-                    강남
-                  </Text>
-                </View>
-                <View
-                  style={[
-                    styles.zoneTag,
-                    { left: "32%", top: "28%", marginLeft: -38, marginTop: -8 },
-                  ]}
-                >
-                  <Text style={[styles.zoneTagText, { color: "#7C3AED" }]}>
-                    광화문
-                  </Text>
-                </View>
-                <View
-                  style={[
-                    styles.zoneTag,
-                    { left: "28%", top: "58%", marginLeft: -28, marginTop: -8 },
-                  ]}
-                >
-                  <Text style={[styles.zoneTagText, { color: "#047857" }]}>
-                    용산
-                  </Text>
-                </View>
-              </>
-            )}
-
-            {/* 동선 라인 */}
-            {mode === "today" &&
-              route.map((t, idx) => {
-                if (idx === route.length - 1) return null;
-                const next = route[idx + 1];
-                if (!t.location || !next.location) return null;
-                const x1 = t.location.x;
-                const y1 = t.location.y;
-                const x2 = next.location.x;
-                const y2 = next.location.y;
-                const dx = x2 - x1;
-                const dy = y2 - y1;
-                const len = Math.sqrt(dx * dx + dy * dy);
-                const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
+          <MapView
+            ref={mapRef}
+            style={StyleSheet.absoluteFillObject}
+            provider={PROVIDER_GOOGLE}
+            initialRegion={INITIAL_REGION}
+            onRegionChangeComplete={(region) => setLatitudeDelta(region.latitudeDelta)}
+          >
+            <React.Fragment key={`${mode}-${timeRange}`}>
+            {mode !== "zones" &&
+              pins.map((t, idx) => {
+                const coords = MAP_COORDS[t.id];
+                if (!coords) return null;
+                const cat = getCategory(t.category);
+                const isActive = selected?.id === t.id;
                 return (
-                  <View
-                    key={`line-${idx}`}
-                    style={{
-                      position: "absolute",
-                      left: `${x1 * 100}%`,
-                      top: `${y1 * 100}%`,
-                      width: `${len * 100}%`,
-                      height: 3,
-                      backgroundColor: "#3B82F6",
-                      opacity: 0.6,
-                      transform: [{ rotateZ: `${angle}deg` }],
-                      transformOrigin: "0% 50%",
-                      borderRadius: 2,
-                    }}
-                  />
+                  <Marker
+                    key={t.id}
+                    coordinate={coords}
+                    onPress={() => setSelected(t)}
+                    tracksViewChanges={false}
+                  >
+                    <View
+                      style={[
+                        styles.pinDot,
+                        {
+                          backgroundColor: cat.color,
+                          transform: [{ scale: isActive ? 1.15 : 1 }],
+                          borderColor: "#FFFFFF",
+                          borderWidth: isActive ? 3 : 2,
+                        },
+                      ]}
+                    >
+                      {mode === "today" ? (
+                        <Text style={styles.pinNum}>{idx + 1}</Text>
+                      ) : (
+                        <Ionicons name={cat.icon} size={12} color="#FFFFFF" />
+                      )}
+                    </View>
+                  </Marker>
                 );
               })}
 
-            {/* 핀들 */}
-            {mode !== "zones" &&
-              pins.map((t, idx) => {
-              if (!t.location) return null;
-              const cat = getCategory(t.category);
-              const isActive = selected?.id === t.id;
-              return (
-                <TouchableOpacity
-                  key={t.id}
-                  onPress={() => setSelected(t)}
-                  style={[
-                    styles.pinWrap,
-                    {
-                      left: `${t.location.x * 100}%`,
-                      top: `${t.location.y * 100}%`,
-                    },
-                  ]}
-                >
-                  <View
-                    style={[
-                      styles.pinDot,
-                      {
-                        backgroundColor: cat.color,
-                        transform: [{ scale: isActive ? 1.15 : 1 }],
-                        borderColor: isActive ? "#FFFFFF" : "#FFFFFF",
-                        borderWidth: isActive ? 3 : 2,
-                      },
-                    ]}
-                  >
-                    {mode === "today" && (
-                      <Text style={styles.pinNum}>{idx + 1}</Text>
-                    )}
-                    {mode !== "today" && (
-                      <Ionicons name={cat.icon} size={12} color="#FFFFFF" />
-                    )}
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
+            {mode === "today" && route.length >= 2 && (
+              <>
+                <Polyline
+                  coordinates={route
+                    .filter((t) => MAP_COORDS[t.id] !== undefined)
+                    .map((t) => MAP_COORDS[t.id]!)}
+                  strokeColor="#3B82F6"
+                  strokeWidth={3}
+                />
+                {route.slice(0, -1).map((t, idx) => {
+                  const a = MAP_COORDS[t.id];
+                  const b = MAP_COORDS[route[idx + 1].id];
+                  if (!a || !b) return null;
+                  const midLat = (a.latitude + b.latitude) / 2;
+                  const midLng = (a.longitude + b.longitude) / 2;
+                  const bearing =
+                    (Math.atan2(
+                      b.longitude - a.longitude,
+                      b.latitude - a.latitude
+                    ) *
+                      180) /
+                    Math.PI;
+                  return (
+                    <Marker
+                      key={`arrow-${idx}`}
+                      coordinate={{ latitude: midLat, longitude: midLng }}
+                      anchor={{ x: 0.5, y: 0.5 }}
+                      tracksViewChanges={false}
+                    >
+                      <View style={{ transform: [{ rotate: `${bearing}deg` }] }}>
+                        <Ionicons name="caret-up" size={22} color="#3B82F6" />
+                      </View>
+                    </Marker>
+                  );
+                })}
+              </>
+            )}
 
-            {/* 위치 라벨 */}
-            <View style={[styles.areaLabel, { top: 20, left: 20 }]}>
-              <Text style={styles.areaLabelText}>광화문</Text>
-            </View>
-            <View style={[styles.areaLabel, { bottom: 20, right: 20 }]}>
-              <Text style={styles.areaLabelText}>강남역</Text>
-            </View>
-          </View>
+            {mode === "heatmap" && heatmapPoints.length > 0 && (
+              <Heatmap
+                points={heatmapPoints}
+                radius={50}
+                opacity={0.7}
+                gradient={{
+                  colors: ["#3B82F6", "#A855F7", "#F97316", "#EF4444"],
+                  startPoints: [0.1, 0.3, 0.6, 0.9],
+                  colorMapSize: 256,
+                }}
+              />
+            )}
 
-          {/* 줌 컨트롤 mock */}
+            {mode === "zones" &&
+              ZONE_COORDS.map((z) => (
+                <React.Fragment key={z.id}>
+                  <Circle
+                    center={{ latitude: z.latitude, longitude: z.longitude }}
+                    radius={z.radiusMeters}
+                    strokeColor={z.color}
+                    strokeWidth={2}
+                    fillColor={`${z.color}30`}
+                  />
+                  {showZoneLabels && (
+                    <Marker
+                      coordinate={{ latitude: z.latitude, longitude: z.longitude }}
+                      anchor={{ x: 0.5, y: 0.5 }}
+                    >
+                      <View style={styles.zoneTag}>
+                        <Text style={[styles.zoneTagText, { color: z.color }]}>
+                          {z.label}
+                        </Text>
+                      </View>
+                    </Marker>
+                  )}
+                </React.Fragment>
+              ))}
+            </React.Fragment>
+          </MapView>
+
           <View style={styles.zoomCol}>
-            <TouchableOpacity style={styles.zoomBtn}>
+            <TouchableOpacity
+              style={styles.zoomBtn}
+              onPress={async () => {
+                const cam = await mapRef.current?.getCamera();
+                if (cam) mapRef.current?.animateCamera({ ...cam, zoom: (cam.zoom ?? 14) + 1 });
+              }}
+            >
               <Ionicons name="add" size={18} color="#374151" />
             </TouchableOpacity>
             <View style={styles.zoomDivider} />
-            <TouchableOpacity style={styles.zoomBtn}>
+            <TouchableOpacity
+              style={styles.zoomBtn}
+              onPress={async () => {
+                const cam = await mapRef.current?.getCamera();
+                if (cam) mapRef.current?.animateCamera({ ...cam, zoom: (cam.zoom ?? 14) - 1 });
+              }}
+            >
               <Ionicons name="remove" size={18} color="#374151" />
             </TouchableOpacity>
           </View>
-          <TouchableOpacity style={styles.locateBtn}>
+          <TouchableOpacity
+            style={styles.locateBtn}
+            onPress={() => mapRef.current?.animateToRegion(INITIAL_REGION, 500)}
+          >
             <Ionicons name="locate" size={18} color="#3B82F6" />
           </TouchableOpacity>
 
@@ -372,9 +358,9 @@ export default function MapScreen() {
             )}
             {mode === "heatmap" && (
               <View style={styles.summaryItem}>
-                <Ionicons name="pin" size={14} color="#3B82F6" />
+                <Ionicons name="flame" size={14} color="#F97316" />
                 <Text style={styles.summaryText}>
-                  핀 {visiblePins.length}개 · {activeRange.label}
+                  소비 {visiblePins.length}건 · {activeRange.label}
                 </Text>
               </View>
             )}
@@ -574,46 +560,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#F3F4F6",
   },
-  mapBg: {
-    flex: 1,
-    backgroundColor: "#EFF6FF",
-    position: "relative",
-  },
-  gridH: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    height: 1,
-    backgroundColor: "rgba(59,130,246,0.08)",
-  },
-  gridV: {
-    position: "absolute",
-    top: 0,
-    bottom: 0,
-    width: 1,
-    backgroundColor: "rgba(59,130,246,0.08)",
-  },
-  road: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    backgroundColor: "#DBEAFE",
-  },
-  roadV: {
-    position: "absolute",
-    top: 0,
-    bottom: 0,
-    backgroundColor: "#DBEAFE",
-  },
-  pinWrap: {
-    position: "absolute",
-    width: 26,
-    height: 26,
-    marginLeft: -13,
-    marginTop: -13,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   pinDot: {
     width: 26,
     height: 26,
@@ -627,18 +573,6 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   pinNum: { color: "#FFFFFF", fontSize: 11, fontWeight: "800" },
-  areaLabel: {
-    position: "absolute",
-    backgroundColor: "rgba(255,255,255,0.85)",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-  },
-  areaLabelText: {
-    color: "#374151",
-    fontSize: 11,
-    fontWeight: "700",
-  },
   zoomCol: {
     position: "absolute",
     right: 12,
@@ -785,13 +719,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   tzText: { color: "#374151", fontSize: 10, fontWeight: "700" },
-  zoneCircle: {
-    position: "absolute",
-    borderRadius: 999,
-    borderWidth: 2,
-  },
   zoneTag: {
-    position: "absolute",
     backgroundColor: "rgba(255,255,255,0.92)",
     paddingHorizontal: 10,
     paddingVertical: 4,
