@@ -149,7 +149,7 @@ function buildWeeklySpending(items: DisplayTransaction[]): DailySpending[] {
     date: d.date,
     label: d.label,
     total: items
-      .filter((t) => t.datetime.startsWith(d.date))
+      .filter((t) => localDateStr(new Date(t.datetime)) === d.date)
       .reduce((s, t) => s + t.amount, 0),
   }));
 }
@@ -227,7 +227,7 @@ function buildDayOfWeekPattern(items: DisplayTransaction[]): DayOfWeekItem[] {
   }));
 }
 
-function processItems(items: DisplayTransaction[], totalAmount: number) {
+function processItems(items: DisplayTransaction[], totalAmount: number, recentCount = 5) {
   const today = todayStr();
   const sorted = [...items].sort((a, b) =>
     b.datetime.localeCompare(a.datetime)
@@ -237,7 +237,7 @@ function processItems(items: DisplayTransaction[], totalAmount: number) {
   const daysInMonth = new Date().getDate();
   return {
     allItems: sorted,
-    recentItems: sorted.slice(0, 5),
+    recentItems: sorted.slice(0, recentCount),
     todayItems,
     todayTotal: todayTotalAmt,
     todayCount: todayItems.length,
@@ -269,25 +269,22 @@ export function useExpenditures(recentCount = 5): UseExpendituresResult {
         const allApiItems = res.dailyExpenditures.flatMap((d) =>
           d.list.map(toDisplay)
         );
-        const processed = processItems(allApiItems, res.totalAmount);
+        const processed = processItems(allApiItems, res.totalAmount, recentCount);
         setData({ totalAmount: res.totalAmount, ...processed });
       } else {
         const mockItems = TRANSACTIONS.map(mockToDisplay);
         const mockTotal = mockItems.reduce((s, t) => s + t.amount, 0);
-        const processed = processItems(mockItems, mockTotal);
+        const processed = processItems(mockItems, mockTotal, recentCount);
         setData({ totalAmount: mockTotal, ...processed });
       }
     } catch (e) {
       const msg = (e as Error)?.message ?? "데이터를 불러오지 못했어요.";
       setError(msg);
-      const mockItems = TRANSACTIONS.map(mockToDisplay);
-      const mockTotal = mockItems.reduce((s, t) => s + t.amount, 0);
-      const processed = processItems(mockItems, mockTotal);
-      setData({ totalAmount: mockTotal, ...processed });
+      setData(null);
     } finally {
       setLoading(false);
     }
-  }, [year, month]);
+  }, [year, month, recentCount]);
 
   useEffect(() => {
     fetch();

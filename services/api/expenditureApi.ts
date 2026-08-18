@@ -224,7 +224,6 @@ export async function ocrReceipt(uri: string): Promise<OcrApiResponse> {
   }
 
   const json = await res.json();
-  console.log("[ocrReceipt] 서버 응답:", JSON.stringify(json));
 
   // 서버가 HTTP 200이지만 status:-404 같은 오류 응답을 보낼 때
   if (json && typeof json.status === "number" && json.status < 0) {
