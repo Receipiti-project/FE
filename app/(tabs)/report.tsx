@@ -10,13 +10,13 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import {
-  AI_INSIGHTS,
   AI_SUGGESTED_QUESTIONS,
   CATEGORIZATION_STATS,
   formatKRW,
   getCategory,
 } from "@/constants/mockData";
 import { useExpenditures } from "@/hooks/useExpenditures";
+import { createReport } from "@/services/api/reportApi";
 
 const RANGES = ["이번주", "이번달"] as const;
 type Range = (typeof RANGES)[number];
@@ -45,6 +45,28 @@ export default function ReportScreen() {
     dayOfWeekPattern,
     refetch,
   } = useExpenditures();
+
+  const [aiReport, setAiReport] = useState<string | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+
+  const handleGenerateReport = async () => {
+    setAiLoading(true);
+    setAiError(null);
+    try {
+      const now = new Date();
+      const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      const expenditureData = allItems
+        .map((t) => `${t.datetime} ${t.store} ${t.categoryName} ${t.amount}원`)
+        .join("\n");
+      const res = await createReport(month, expenditureData);
+      setAiReport(res.report);
+    } catch (e) {
+      setAiError((e as Error)?.message ?? "리포트 생성에 실패했어요.");
+    } finally {
+      setAiLoading(false);
+    }
+  };
 
   // 기간 필터 적용
   const weekStart = useMemo(() => currentWeekStart(), []);
@@ -334,20 +356,24 @@ export default function ReportScreen() {
               <Ionicons name="sparkles-outline" size={16} color="#3B82F6" />
               <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>AI 소비 리포트</Text>
             </View>
-            <Text style={styles.metaTinyLabel}>매주 월요일 자동 갱신</Text>
+            <TouchableOpacity onPress={handleGenerateReport} disabled={aiLoading}>
+              <Text style={[styles.metaTinyLabel, { color: "#3B82F6", fontWeight: "700" }]}>
+                {aiReport ? "다시 생성" : "생성하기"}
+              </Text>
+            </TouchableOpacity>
           </View>
-          <View style={{ gap: 10 }}>
-            {AI_INSIGHTS.map((ins) => (
-              <View key={ins.title} style={[styles.insightCard, { borderLeftColor: ins.accent }]}>
-                <View style={[styles.insightIcon, { backgroundColor: `${ins.accent}1A` }]}>
-                  <Ionicons name={ins.icon} size={18} color={ins.accent} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.insightTitle}>{ins.title}</Text>
-                  <Text style={styles.insightBody}>{ins.body}</Text>
-                </View>
-              </View>
-            ))}
+          <View style={[styles.insightCard, { borderLeftColor: "#3B82F6" }]}>
+            {aiLoading ? (
+              <ActivityIndicator color="#3B82F6" style={{ paddingVertical: 8 }} />
+            ) : aiError ? (
+              <Text style={[styles.insightBody, { color: "#DC2626" }]}>{aiError}</Text>
+            ) : aiReport ? (
+              <Text style={styles.insightBody}>{aiReport}</Text>
+            ) : (
+              <Text style={styles.insightBody}>
+                이번 달 소비 데이터를 바탕으로 AI 리포트를 생성해보세요.
+              </Text>
+            )}
           </View>
         </View>
 

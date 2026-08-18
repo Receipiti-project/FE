@@ -147,6 +147,36 @@ export async function createCategory(name: string): Promise<CategoryApiItem> {
 }
 
 /**
+ * PATCH /api/v1/categories/rules/{id}
+ * 커스텀 카테고리 이름 수정
+ */
+export async function updateCategoryRule(id: number, name: string): Promise<CategoryApiItem> {
+  if (!isApiConfigured()) throw new Error("API_BASE_URL 미설정");
+  const url = apiUrl(`/api/v1/categories/rules/${id}`);
+  const res = await fetch(url, {
+    method: "PATCH",
+    headers: buildAuthHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) throw new Error(`카테고리 수정 실패 (HTTP ${res.status})`);
+  return res.json();
+}
+
+/**
+ * DELETE /api/v1/categories/rules/{id}
+ * 커스텀 카테고리 삭제 (사용 중인 카테고리는 삭제 불가)
+ */
+export async function deleteCategoryRule(id: number): Promise<void> {
+  if (!isApiConfigured()) throw new Error("API_BASE_URL 미설정");
+  const url = apiUrl(`/api/v1/categories/rules/${id}`);
+  const res = await fetch(url, { method: "DELETE", headers: buildAuthHeaders() });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`카테고리 삭제 실패 (HTTP ${res.status})${text ? `: ${text}` : ""}`);
+  }
+}
+
+/**
  * POST /api/v1/expenditures/ocr
  * 영수증/캡처 이미지를 서버로 전송 → 상호명·금액·날짜 추출
  */
