@@ -1,7 +1,13 @@
+import { useEffect } from "react";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
+import { initCategoryMapping } from "@/services/categoryMapping";
 
 export default function RootLayout() {
+  useEffect(() => {
+    initCategoryMapping();
+  }, []);
+
   return (
     <>
       <Stack>
@@ -12,6 +18,7 @@ export default function RootLayout() {
         <Stack.Screen name="register/voice" options={{ headerShown: false }} />
         <Stack.Screen name="register/sms" options={{ headerShown: false }} />
         <Stack.Screen name="register/manual" options={{ headerShown: false }} />
+        <Stack.Screen name="expenditure/[id]" options={{ headerShown: false }} />
       </Stack>
       <StatusBar style="auto" />
     </>
