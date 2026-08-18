@@ -6,11 +6,10 @@ export type IoniconName = keyof typeof Ionicons.glyphMap;
 
 export type CategoryId =
   | "food"
-  | "cafe"
   | "transport"
   | "shopping"
   | "culture"
-  | "living"
+  | "health"
   | "etc";
 
 export type Category = {
@@ -21,13 +20,12 @@ export type Category = {
 };
 
 export const CATEGORIES: Category[] = [
-  { id: "food", label: "식비", color: "#F97316", icon: "restaurant-outline" },
-  { id: "cafe", label: "카페/간식", color: "#A855F7", icon: "cafe-outline" },
-  { id: "transport", label: "교통", color: "#3B82F6", icon: "bus-outline" },
-  { id: "shopping", label: "쇼핑", color: "#EC4899", icon: "bag-handle-outline" },
-  { id: "culture", label: "문화/여가", color: "#10B981", icon: "film-outline" },
-  { id: "living", label: "생활", color: "#F59E0B", icon: "home-outline" },
-  { id: "etc", label: "기타", color: "#6B7280", icon: "ellipsis-horizontal" },
+  { id: "food",      label: "식비",      color: "#F97316", icon: "restaurant-outline" },
+  { id: "transport", label: "교통",      color: "#3B82F6", icon: "bus-outline" },
+  { id: "shopping",  label: "쇼핑",      color: "#EC4899", icon: "bag-handle-outline" },
+  { id: "culture",   label: "문화/여가", color: "#10B981", icon: "film-outline" },
+  { id: "health",    label: "건강/의료", color: "#EF4444", icon: "medkit-outline" },
+  { id: "etc",       label: "기타",      color: "#6B7280", icon: "ellipsis-horizontal" },
 ];
 
 export const getCategory = (id: CategoryId): Category =>
@@ -57,7 +55,7 @@ export const TRANSACTIONS: Transaction[] = [
     id: "t1",
     store: "스타벅스 강남R점",
     amount: 6800,
-    category: "cafe",
+    category: "food",
     datetime: "2026-04-29T18:42:00",
     method: "카드",
     source: "receipt",
@@ -100,7 +98,7 @@ export const TRANSACTIONS: Transaction[] = [
     id: "t5",
     store: "GS25 역삼점",
     amount: 4200,
-    category: "living",
+    category: "food",
     datetime: "2026-04-29T09:05:00",
     method: "간편결제",
     source: "capture",
@@ -122,7 +120,7 @@ export const TRANSACTIONS: Transaction[] = [
     id: "t7",
     store: "이디야 회사앞",
     amount: 4500,
-    category: "cafe",
+    category: "food",
     datetime: "2026-04-28T11:12:00",
     method: "카드",
     source: "receipt",
