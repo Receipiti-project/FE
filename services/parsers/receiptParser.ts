@@ -53,24 +53,18 @@ const PAYMENT_METHOD_KEYWORDS: Array<[PaymentMethod, RegExp]> = [
   ],
 ];
 
-/* 카테고리 키워드 — 매장명이 매칭되면 그 카테고리를 강하게 제안 */
+/* 카테고리 키워드 — 서버 6개 카테고리 기준 */
 const CATEGORY_KEYWORDS: Array<{ id: CategoryId; words: RegExp; weight: number }> = [
   {
-    id: "cafe",
+    id: "transport",
     words:
-      /스타벅스|투썸|이디야|커피빈|할리스|폴바셋|블루보틀|메가커피|컴포즈|빽다방|커피|카페|디저트|베이커리|파리바게뜨|뚜레쥬르/iu,
+      /지하철|버스|택시|카카오\s*T|티머니|교통|주유|GS칼텍스|SK에너지|S-OIL|현대오일뱅크|주차/iu,
     weight: 1,
   },
   {
     id: "food",
     words:
-      /식당|분식|국밥|김밥|버거|치킨|피자|돈까스|초밥|스시|라멘|족발|보쌈|곱창|삼겹|갈비|냉면|국수|탕|찌개|덮밥|뷔페|레스토랑|배달의민족|쿠팡이츠|요기요/iu,
-    weight: 1,
-  },
-  {
-    id: "transport",
-    words:
-      /지하철|버스|택시|카카오\s*T|티머니|교통|주유|GS칼텍스|SK에너지|S-OIL|현대오일뱅크|주차/iu,
+      /스타벅스|투썸|이디야|커피빈|할리스|폴바셋|블루보틀|메가커피|컴포즈|빽다방|커피|카페|디저트|베이커리|파리바게뜨|뚜레쥬르|식당|분식|국밥|김밥|버거|치킨|피자|돈까스|초밥|스시|라멘|족발|보쌈|곱창|삼겹|갈비|냉면|국수|탕|찌개|덮밥|뷔페|레스토랑|배달의민족|쿠팡이츠|요기요|편의점|GS25|CU|세븐일레븐|이마트24|미니스톱/iu,
     weight: 1,
   },
   {
@@ -86,10 +80,10 @@ const CATEGORY_KEYWORDS: Array<{ id: CategoryId; words: RegExp; weight: number }
     weight: 0.9,
   },
   {
-    id: "living",
+    id: "health",
     words:
-      /약국|병원|의원|치과|편의점|GS25|CU|세븐일레븐|이마트24|미니스톱|세탁|마트|관리비/iu,
-    weight: 0.7,
+      /약국|병원|의원|치과|안과|한의원|클리닉|헬스|피트니스|gym/iu,
+    weight: 0.9,
   },
 ];
 

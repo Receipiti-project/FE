@@ -52,6 +52,7 @@ type Draft = {
   memo: string;
   rawText: string;
   address?: string;
+  isManualEntry?: boolean;
 };
 
 const PAYMENT_METHODS: PaymentMethod[] = [
@@ -109,6 +110,7 @@ export default function ReceiptScreen() {
       memo: "",
       rawText: res.rawText,
       address: res.location?.address,
+      isManualEntry: res.isManualEntry,
     });
     setStep("review");
   };
@@ -161,7 +163,12 @@ export default function ReceiptScreen() {
         );
         return;
       }
-      Alert.alert("분석 실패", "다시 시도해주세요.");
+      const msg = (e as Error)?.message ?? "";
+      if (msg.startsWith("AUTH_EXPIRED:")) {
+        Alert.alert("인증 만료", msg.replace("AUTH_EXPIRED:", ""), [{ text: "확인", onPress: reset }]);
+      } else {
+        Alert.alert("분석 실패", msg || "다시 시도해주세요.", [{ text: "확인", onPress: reset }]);
+      }
       setStep("idle");
     }
   };
@@ -334,16 +341,12 @@ export default function ReceiptScreen() {
             </Text>
           </View>
 
-          {/* OCR 결과가 부실할 때 알려줌 */}
-          {draft && (draft.items.length === 0 || !draft.storeName) && (
+          {/* 가맹점명을 인식하지 못했을 때만 경고 */}
+          {draft && !draft.isManualEntry && !draft.storeName && (
             <View style={styles.warnNotice}>
               <Ionicons name="warning-outline" size={14} color="#B45309" />
               <Text style={styles.warnText}>
-                {draft.items.length === 0 && !draft.storeName
-                  ? "가맹점·품목을 정확히 인식하지 못했어요. 직접 채워주세요."
-                  : draft.items.length === 0
-                    ? "품목을 인식하지 못했어요. 아래에서 직접 추가해주세요."
-                    : "가맹점명을 인식하지 못했어요. 직접 입력해주세요."}
+                가맹점명을 인식하지 못했어요. 직접 입력해주세요.
               </Text>
             </View>
           )}
@@ -1170,6 +1173,21 @@ const styles = StyleSheet.create({
   },
   stepBadgeNum: { color: "#9CA3AF", fontSize: 12, fontWeight: "700" },
   stepLabel: { color: "#9CA3AF", fontSize: 14 },
+
+  /* 직접 입력 모드 안내 */
+  infoNotice: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#EFF6FF",
+    borderWidth: 1,
+    borderColor: "#BFDBFE",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    marginTop: 10,
+  },
+  infoText: { color: "#1D4ED8", fontSize: 11, lineHeight: 16, flex: 1 },
 
   /* OCR 결과 부실 안내 */
   warnNotice: {

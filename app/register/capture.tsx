@@ -186,7 +186,12 @@ export default function CaptureScreen() {
         );
         return;
       }
-      Alert.alert("분석 실패", "다시 시도해주세요.");
+      const msg = (e as Error)?.message ?? "";
+      if (msg.startsWith("AUTH_EXPIRED:")) {
+        Alert.alert("인증 만료", msg.replace("AUTH_EXPIRED:", ""), [{ text: "확인", onPress: reset }]);
+      } else {
+        Alert.alert("분석 실패", msg || "다시 시도해주세요.", [{ text: "확인", onPress: reset }]);
+      }
       setStep("idle");
     }
   };
@@ -280,7 +285,6 @@ export default function CaptureScreen() {
       <>
         <EmptyState
           onPick={pickFromLibrary}
-          onShoot={takePhoto}
           onPasteText={() => setPasteOpen(true)}
           ocrAvailable={ocrAvailable}
         />
@@ -633,12 +637,10 @@ function PaymentCard({
 
 function EmptyState({
   onPick,
-  onShoot,
   onPasteText,
   ocrAvailable,
 }: {
   onPick: () => void;
-  onShoot: () => void;
   onPasteText: () => void;
   ocrAvailable: boolean;
 }) {
@@ -677,10 +679,6 @@ function EmptyState({
         <TouchableOpacity style={styles.bigPrimary} onPress={onPick}>
           <Ionicons name="images-outline" size={20} color="#FFFFFF" />
           <Text style={styles.bigPrimaryText}>앨범에서 선택</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.bigSecondary} onPress={onShoot}>
-          <Ionicons name="camera-outline" size={20} color="#7C3AED" />
-          <Text style={styles.bigSecondaryText}>카메라 촬영</Text>
         </TouchableOpacity>
 
         {/* 폴백 — 백엔드 OCR 미연결 상태에서도 텍스트로 등록 가능 */}
