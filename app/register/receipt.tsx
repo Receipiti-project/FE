@@ -43,6 +43,7 @@ type ReceiptItem = { name: string; price: number };
 type Draft = {
   storeName: string;
   purchasedAt: string;
+  purchasedAtIso?: string;
   totalAmount: number;
   paymentMethod: PaymentMethod;
   category: CategoryId;
@@ -101,6 +102,7 @@ export default function ReceiptScreen() {
     setDraft({
       storeName: res.storeName,
       purchasedAt: res.purchasedAt,
+      purchasedAtIso: res.purchasedAtIso,
       totalAmount: res.totalAmount,
       paymentMethod: res.paymentMethod,
       category: res.suggestedCategory,

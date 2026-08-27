@@ -44,6 +44,7 @@ type DraftPayment = {
   store: string;
   amount: number;
   paidAt?: string;
+  paidAtIso?: string;
   method: PaymentMethod;
   category: CategoryId;
   initialCategory: CategoryId;
@@ -114,6 +115,7 @@ export default function CaptureScreen() {
         store: p.store,
         amount: p.amount,
         paidAt: p.paidAt,
+        paidAtIso: p.paidAtIso,
         method: p.method ?? "카드",
         category: p.category ?? "etc",
         initialCategory: p.category ?? "etc",
@@ -261,6 +263,7 @@ export default function CaptureScreen() {
           store: d.store,
           amount: d.amount,
           paidAt: d.paidAt,
+          paidAtIso: d.paidAtIso,
           method: d.method,
           category: d.category,
           address: d.address,

@@ -1,2 +1,3 @@
-export const OPENAI_API_KEY: string =
-  ((process.env as any).EXPO_PUBLIC_OPENAI_API_KEY as string | undefined)?.trim() ?? "";
+// Public Expo configuration must never contain third-party API credentials.
+// AI requests need to be proxied by the backend before the client features use them.
+export {};

@@ -25,7 +25,7 @@ import {
   updateExpenditure,
   deleteExpenditure,
   ExpenditureDetail,
-  nowLocalIso,
+  datetimeLocalToIso,
 } from "@/services/api/expenditureApi";
 import {
   getServerCategoryId,
@@ -53,20 +53,9 @@ function isoToLocal(iso: string): string {
     const day = String(d.getDate()).padStart(2, "0");
     const hh = String(d.getHours()).padStart(2, "0");
     const mm = String(d.getMinutes()).padStart(2, "0");
-    return `${y}-${mo}-${day} ${hh}:${mm}`;
+    return `${y}-${mo}-${day}T${hh}:${mm}`;
   } catch {
     return iso;
-  }
-}
-
-function localToIso(val: string): string {
-  if (!val) return nowLocalIso();
-  try {
-    // 타임존 없으면 그대로 (서버가 로컬로 처리)
-    if (!val.endsWith("Z") && !/[+-]\d{2}:\d{2}$/.test(val)) return val;
-    return new Date(val).toISOString();
-  } catch {
-    return nowLocalIso();
   }
 }
 
@@ -140,7 +129,7 @@ export default function ExpenditureDetailScreen() {
       await updateExpenditure(expenditureId, {
         storeName: draft.storeName.trim(),
         amount,
-        expenditureDate: localToIso(draft.expenditureDate),
+        expenditureDate: datetimeLocalToIso(draft.expenditureDate),
         categoryId: getServerCategoryId(draft.category),
         memo: draft.memo,
         currency: draft.currency,

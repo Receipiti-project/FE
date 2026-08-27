@@ -40,6 +40,7 @@ export type OcrItem = {
 export type ReceiptOcrResult = {
   storeName: string;
   purchasedAt: string;
+  purchasedAtIso?: string;
   totalAmount: number;
   paymentMethod: PaymentMethod;
   items: OcrItem[];
@@ -54,6 +55,7 @@ export type CapturePayment = {
   store: string;
   amount: number;
   paidAt?: string;
+  paidAtIso?: string;
   method?: PaymentMethod;
   category?: CategoryId;
   confidence?: number;
@@ -92,6 +94,7 @@ export async function parseReceipt(uri: string): Promise<ReceiptOcrResult> {
     return {
       storeName: ocr.storeName ?? "",
       purchasedAt: ocr.paymentDate ? formatIsoToKorean(ocr.paymentDate) : "",
+      purchasedAtIso: ocr.paymentDate || undefined,
       totalAmount: ocr.amount ?? 0,
       paymentMethod: "카드",
       items: [],
@@ -123,6 +126,7 @@ export async function parseCapture(uri: string): Promise<CaptureOcrResult> {
             store: ocr.storeName,
             amount: ocr.amount,
             paidAt: ocr.paymentDate ? formatIsoToKorean(ocr.paymentDate) : undefined,
+            paidAtIso: ocr.paymentDate || undefined,
             method: "카드",
             category,
             confidence: 0.7,
@@ -166,6 +170,7 @@ const _drafts: SavedDraft[] = [];
 type ReceiptSavePayload = {
   storeName: string;
   purchasedAt: string;
+  purchasedAtIso?: string;
   totalAmount: number;
   category: CategoryId;
   memo?: string;
@@ -176,6 +181,7 @@ type CaptureSavePayload = {
   store: string;
   amount: number;
   paidAt?: string;
+  paidAtIso?: string;
   category: CategoryId;
   memo?: string;
   [key: string]: unknown;
@@ -191,11 +197,11 @@ export async function saveTransaction(
     try {
       const d = data as ReceiptSavePayload;
       const categoryId = getServerCategoryId(d.category ?? "etc");
-      const expenditureDate = d.purchasedAt
+      const expenditureDate = d.purchasedAtIso ?? (d.purchasedAt
         ? (() => {
             try { return new Date(d.purchasedAt).toISOString(); } catch { return nowLocalIso(); }
           })()
-        : nowLocalIso();
+        : nowLocalIso());
 
       const res = await createExpenditure({
         categoryId,
@@ -236,11 +242,11 @@ export async function saveTransactions(
       try {
         const d = item as CaptureSavePayload;
         const categoryId = getServerCategoryId(d.category ?? "etc");
-        const expenditureDate = d.paidAt
+        const expenditureDate = d.paidAtIso ?? (d.paidAt
           ? (() => {
               try { return new Date(d.paidAt).toISOString(); } catch { return nowLocalIso(); }
             })()
-          : nowLocalIso();
+          : nowLocalIso());
 
         const res = await createExpenditure({
           categoryId,
