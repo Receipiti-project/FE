@@ -24,11 +24,9 @@ import {
   getCategory,
 } from "@/constants/mockData";
 import {
-  ApiNotConfiguredError,
+  CaptureOcrUnavailableError,
   CaptureOcrResult,
   CaptureSource,
-  isServerOcrConfigured,
-  OcrServerError,
   parseCapture,
   parseCaptureFromText,
   PaymentMethod,
@@ -85,7 +83,7 @@ export default function CaptureScreen() {
   const [pasteOpen, setPasteOpen] = useState(false);
   const [pasteText, setPasteText] = useState("");
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const ocrAvailable = isServerOcrConfigured();
+  const ocrAvailable = false;
 
   useEffect(() => {
     return () => {
@@ -163,29 +161,10 @@ export default function CaptureScreen() {
     } catch (e) {
       if (tickRef.current) clearInterval(tickRef.current);
       tickRef.current = null;
-      if (e instanceof ApiNotConfiguredError) {
-        Alert.alert(
-          "서버가 아직 연결되지 않았어요",
-          "지금은 카톡 결제 메시지 텍스트를 직접 붙여넣어 분석해보시겠어요?",
-          [
-            { text: "취소", style: "cancel", onPress: reset },
-            {
-              text: "텍스트 붙여넣기",
-              onPress: () => {
-                setStep("idle");
-                setPasteOpen(true);
-              },
-            },
-          ]
-        );
-        return;
-      }
-      if (e instanceof OcrServerError) {
-        Alert.alert(
-          "OCR 서버 응답 오류",
-          `${e.message}${e.code ? `\n(code: ${e.code})` : ""}`,
-          [{ text: "확인", onPress: reset }]
-        );
+      if (e instanceof CaptureOcrUnavailableError) {
+        Alert.alert("캡처 분석 준비 중", e.message, [
+          { text: "확인", onPress: reset },
+        ]);
         return;
       }
       const msg = (e as Error)?.message ?? "";

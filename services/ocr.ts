@@ -2,11 +2,6 @@ import { CategoryId } from "@/constants/mockData";
 import { parseKakaoPayCapture } from "@/services/parsers/kakaoPayParser";
 import {
   fromManualText,
-  isServerOcrConfigured,
-  isOnDeviceOcrAvailable,
-  ApiNotConfiguredError,
-  MLKitUnavailableError,
-  OcrServerError,
   RecognizedText,
 } from "@/services/textRecognition";
 import {
@@ -18,14 +13,6 @@ import {
 } from "@/services/api/expenditureApi";
 import { getServerCategoryId } from "@/services/categoryMapping";
 import { isApiConfigured } from "@/services/api/config";
-
-export {
-  ApiNotConfiguredError,
-  OcrServerError,
-  isServerOcrConfigured,
-  MLKitUnavailableError,
-  isOnDeviceOcrAvailable,
-};
 
 export type PaymentMethod = "카드" | "현금" | "간편결제" | "계좌이체";
 
@@ -60,6 +47,13 @@ export type CaptureOcrResult = {
   payments: CapturePayment[];
 };
 
+export class CaptureOcrUnavailableError extends Error {
+  constructor() {
+    super("캡처 분석 전용 API를 준비하고 있어요.");
+    this.name = "CaptureOcrUnavailableError";
+  }
+}
+
 function emptyReceiptResult(): ReceiptOcrResult {
   return {
     storeName: "",
@@ -76,57 +70,21 @@ export async function parseReceipt(uri: string): Promise<ReceiptOcrResult> {
   if (!isApiConfigured()) {
     return emptyReceiptResult();
   }
-  try {
-    const ocr = await ocrReceipt(uri);
-    const category = guessCategoryFromStoreName(ocr.storeName ?? "");
-    return {
-      storeName: ocr.storeName ?? "",
-      purchasedAt: ocr.paymentDate ? formatIsoToKorean(ocr.paymentDate) : "",
-      purchasedAtIso: ocr.paymentDate || undefined,
-      totalAmount: ocr.amount ?? 0,
-      paymentMethod: "카드",
-      suggestedCategory: category,
-      categoryConfidence: 0.65,
-    };
-  } catch (e) {
-    if (e instanceof ApiNotConfiguredError) {
-      return emptyReceiptResult();
-    }
-    throw e;
-  }
+  const ocr = await ocrReceipt(uri);
+  const category = guessCategoryFromStoreName(ocr.storeName ?? "");
+  return {
+    storeName: ocr.storeName ?? "",
+    purchasedAt: ocr.paymentDate ? formatIsoToKorean(ocr.paymentDate) : "",
+    purchasedAtIso: ocr.paymentDate || undefined,
+    totalAmount: ocr.amount ?? 0,
+    paymentMethod: "카드",
+    suggestedCategory: category,
+    categoryConfidence: 0.65,
+  };
 }
 
-export async function parseCapture(uri: string): Promise<CaptureOcrResult> {
-  if (!isApiConfigured()) {
-    return { source: "unknown", sourceLabel: "캡처 이미지", payments: [] };
-  }
-  try {
-    const ocr = await ocrReceipt(uri);
-    if (ocr.storeName && ocr.amount > 0) {
-      const category = guessCategoryFromStoreName(ocr.storeName);
-      return {
-        source: "unknown",
-        sourceLabel: "캡처 이미지",
-        payments: [
-          {
-            store: ocr.storeName,
-            amount: ocr.amount,
-            paidAt: ocr.paymentDate ? formatIsoToKorean(ocr.paymentDate) : undefined,
-            paidAtIso: ocr.paymentDate || undefined,
-            method: "카드",
-            category,
-            confidence: 0.7,
-          },
-        ],
-      };
-    }
-    return { source: "unknown", sourceLabel: "캡처 이미지", payments: [] };
-  } catch (e) {
-    if (e instanceof ApiNotConfiguredError) {
-      return { source: "unknown", sourceLabel: "캡처 이미지", payments: [] };
-    }
-    throw e;
-  }
+export async function parseCapture(_uri: string): Promise<CaptureOcrResult> {
+  throw new CaptureOcrUnavailableError();
 }
 
 export function parseCaptureFromText(text: string): CaptureOcrResult {

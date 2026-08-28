@@ -14,12 +14,6 @@ export function isApiConfigured(): boolean {
   return API_BASE_URL.length > 0;
 }
 
-/* 백엔드 OCR 엔드포인트 임시 설정 */
-export const OCR_ENDPOINTS = {
-  receipt: "/ocr/receipt",
-  capture: "/ocr/capture",
-} as const;
-
 export function buildAuthHeaders(extra?: Record<string, string>): Record<string, string> {
   const h: Record<string, string> = {
     Accept: "application/json",
