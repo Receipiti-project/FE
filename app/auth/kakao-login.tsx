@@ -1,10 +1,21 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { WebView, WebViewNavigation } from "react-native-webview";
 import { getKakaoLoginUrl } from "@/services/auth";
+
+const AUTH_REQUEST_NOT_FOUND = "authorization_request_not_found";
+const MAX_OAUTH_RESTARTS = 1;
+const OAUTH_ERROR_DETECTOR = `
+  (function () {
+    if (document.body && document.body.innerText.includes("${AUTH_REQUEST_NOT_FOUND}")) {
+      window.ReactNativeWebView.postMessage("${AUTH_REQUEST_NOT_FOUND}");
+    }
+  })();
+  true;
+`;
 
 function callbackParams(url: string): { loginCode?: string; error?: string } | null {
   try {
@@ -24,7 +35,23 @@ function callbackParams(url: string): { loginCode?: string; error?: string } | n
 
 export default function KakaoLoginWebViewScreen() {
   const [loading, setLoading] = useState(true);
+  const [oauthAttempt, setOauthAttempt] = useState(0);
   const callbackHandled = useRef(false);
+  const loginSource = useMemo(() => ({ uri: getKakaoLoginUrl() }), []);
+
+  const restartOAuth = useCallback(() => {
+    if (oauthAttempt >= MAX_OAUTH_RESTARTS) {
+      Alert.alert(
+        "로그인 세션 오류",
+        "새 로그인 세션을 만들지 못했어요. 로그인 창을 닫고 다시 시도해주세요."
+      );
+      return;
+    }
+
+    callbackHandled.current = false;
+    setLoading(true);
+    setOauthAttempt((attempt) => attempt + 1);
+  }, [oauthAttempt]);
 
   const handleNavigation = useCallback((request: WebViewNavigation): boolean => {
     const params = callbackParams(request.url);
@@ -63,9 +90,16 @@ export default function KakaoLoginWebViewScreen() {
       </View>
 
       <WebView
-        source={{ uri: getKakaoLoginUrl() }}
+        key={`kakao-oauth-${oauthAttempt}`}
+        source={loginSource}
         originWhitelist={["http://*", "https://*", "receipiti://*"]}
         onShouldStartLoadWithRequest={handleNavigation}
+        injectedJavaScript={OAUTH_ERROR_DETECTOR}
+        onMessage={(event) => {
+          if (event.nativeEvent.data === AUTH_REQUEST_NOT_FOUND) {
+            restartOAuth();
+          }
+        }}
         onLoadEnd={() => setLoading(false)}
         onError={() => {
           if (!callbackHandled.current) {
