@@ -62,8 +62,21 @@ export default function HomeScreen() {
       <ScrollView contentContainerStyle={styles.scroll}>
         {/* 헤더 */}
         <View style={styles.headerRow}>
-          <TouchableOpacity style={styles.bellBtn} onPress={refetch}>
+          <TouchableOpacity
+            accessibilityLabel="알림"
+            accessibilityRole="button"
+            style={styles.headerButton}
+            onPress={refetch}
+          >
             <Ionicons name="notifications-outline" size={22} color="#374151" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            accessibilityLabel="마이페이지"
+            accessibilityRole="button"
+            style={styles.headerButton}
+            onPress={() => router.push("/mypage")}
+          >
+            <Ionicons name="person-outline" size={22} color="#374151" />
           </TouchableOpacity>
         </View>
 
@@ -292,8 +305,8 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F9FAFB" },
   scroll: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 20 },
-  headerRow: { flexDirection: "row", justifyContent: "flex-end", alignItems: "center", marginBottom: 20 },
-  bellBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: "#FFFFFF", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#F3F4F6" },
+  headerRow: { flexDirection: "row", justifyContent: "flex-end", alignItems: "center", gap: 8, marginBottom: 20 },
+  headerButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: "#FFFFFF", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#F3F4F6" },
   spendCard: { backgroundColor: "#111827", borderRadius: 20, padding: 20 },
   spendLabel: { color: "#9CA3AF", fontSize: 13, fontWeight: "600" },
   spendAmount: { color: "#FFFFFF", fontSize: 30, fontWeight: "800", marginTop: 6 },
