@@ -1,16 +1,41 @@
 import { useEffect } from "react";
-import { Stack } from "expo-router";
+import { ActivityIndicator, View } from "react-native";
+import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { initCategoryMapping } from "@/services/categoryMapping";
+import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 
-export default function RootLayout() {
+function RootNavigator() {
+  const { ready, signedIn } = useAuth();
+  const segments = useSegments();
+  const router = useRouter();
+
   useEffect(() => {
     initCategoryMapping();
   }, []);
 
+  useEffect(() => {
+    if (!ready) return;
+    const onLoginScreen = segments[0] === "login";
+    const onAuthCallback = segments[0] === "auth";
+    if (!signedIn && !onLoginScreen && !onAuthCallback) router.replace("/login" as never);
+    if (signedIn && (onLoginScreen || onAuthCallback)) router.replace("/(tabs)" as never);
+  }, [ready, router, segments, signedIn]);
+
+  if (!ready) {
+    return (
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#FFFFFF" }}>
+        <ActivityIndicator color="#3B82F6" />
+      </View>
+    );
+  }
+
   return (
     <>
       <Stack>
+        <Stack.Screen name="login" options={{ headerShown: false }} />
+        <Stack.Screen name="auth/kakao-login" options={{ headerShown: false }} />
+        <Stack.Screen name="auth/kakao" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="register/index" options={{ headerShown: false }} />
         <Stack.Screen name="register/receipt" options={{ headerShown: false }} />
@@ -22,5 +47,13 @@ export default function RootLayout() {
       </Stack>
       <StatusBar style="auto" />
     </>
+  );
+}
+
+export default function RootLayout() {
+  return (
+    <AuthProvider>
+      <RootNavigator />
+    </AuthProvider>
   );
 }

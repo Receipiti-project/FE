@@ -6,6 +6,8 @@ export const API_AUTH_TOKEN: string =
   ((process.env as any).EXPO_PUBLIC_API_AUTH_TOKEN as string | undefined)?.trim() ??
   "";
 
+let sessionAuthToken: string | null | undefined;
+
 export const API_OCR_TIMEOUT_MS = 25_000;
 
 export function isApiConfigured(): boolean {
@@ -25,8 +27,13 @@ export function buildAuthHeaders(extra?: Record<string, string>): Record<string,
     "ngrok-skip-browser-warning": "true",
     ...(extra ?? {}),
   };
-  if (API_AUTH_TOKEN) h.Authorization = `Bearer ${API_AUTH_TOKEN}`;
+  const token = sessionAuthToken === undefined ? API_AUTH_TOKEN : sessionAuthToken;
+  if (token) h.Authorization = `Bearer ${token}`;
   return h;
+}
+
+export function setSessionAuthToken(token: string | null): void {
+  sessionAuthToken = token?.trim() || null;
 }
 
 export function apiUrl(path: string): string {
