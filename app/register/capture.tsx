@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
-  StyleSheet,
   TouchableOpacity,
   Image,
   Alert,
@@ -17,6 +16,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
+import { styles } from "@/styles/register/captureStyles";
 import {
   CATEGORIES,
   CategoryId,
@@ -44,6 +44,7 @@ type DraftPayment = {
   store: string;
   amount: number;
   paidAt?: string;
+  paidAtIso?: string;
   method: PaymentMethod;
   category: CategoryId;
   initialCategory: CategoryId;
@@ -114,6 +115,7 @@ export default function CaptureScreen() {
         store: p.store,
         amount: p.amount,
         paidAt: p.paidAt,
+        paidAtIso: p.paidAtIso,
         method: p.method ?? "카드",
         category: p.category ?? "etc",
         initialCategory: p.category ?? "etc",
@@ -186,7 +188,12 @@ export default function CaptureScreen() {
         );
         return;
       }
-      Alert.alert("분석 실패", "다시 시도해주세요.");
+      const msg = (e as Error)?.message ?? "";
+      if (msg.startsWith("AUTH_EXPIRED:")) {
+        Alert.alert("인증 만료", msg.replace("AUTH_EXPIRED:", ""), [{ text: "확인", onPress: reset }]);
+      } else {
+        Alert.alert("분석 실패", msg || "다시 시도해주세요.", [{ text: "확인", onPress: reset }]);
+      }
       setStep("idle");
     }
   };
@@ -219,14 +226,6 @@ export default function CaptureScreen() {
     if (!r.canceled) startFlow(r.assets[0].uri);
   };
 
-  const takePhoto = async () => {
-    const p = await ImagePicker.requestCameraPermissionsAsync();
-    if (!p.granted)
-      return Alert.alert("권한 필요", "카메라 접근 권한이 필요합니다.");
-    const r = await ImagePicker.launchCameraAsync({ quality: 1 });
-    if (!r.canceled) startFlow(r.assets[0].uri);
-  };
-
   const updateDraft = (id: string, patch: Partial<DraftPayment>) => {
     setDrafts((prev) => prev.map((d) => (d.id === id ? { ...d, ...patch } : d)));
   };
@@ -256,6 +255,7 @@ export default function CaptureScreen() {
           store: d.store,
           amount: d.amount,
           paidAt: d.paidAt,
+          paidAtIso: d.paidAtIso,
           method: d.method,
           category: d.category,
           address: d.address,
@@ -280,7 +280,6 @@ export default function CaptureScreen() {
       <>
         <EmptyState
           onPick={pickFromLibrary}
-          onShoot={takePhoto}
           onPasteText={() => setPasteOpen(true)}
           ocrAvailable={ocrAvailable}
         />
@@ -633,12 +632,10 @@ function PaymentCard({
 
 function EmptyState({
   onPick,
-  onShoot,
   onPasteText,
   ocrAvailable,
 }: {
   onPick: () => void;
-  onShoot: () => void;
   onPasteText: () => void;
   ocrAvailable: boolean;
 }) {
@@ -677,10 +674,6 @@ function EmptyState({
         <TouchableOpacity style={styles.bigPrimary} onPress={onPick}>
           <Ionicons name="images-outline" size={20} color="#FFFFFF" />
           <Text style={styles.bigPrimaryText}>앨범에서 선택</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.bigSecondary} onPress={onShoot}>
-          <Ionicons name="camera-outline" size={20} color="#7C3AED" />
-          <Text style={styles.bigSecondaryText}>카메라 촬영</Text>
         </TouchableOpacity>
 
         {/* 폴백 — 백엔드 OCR 미연결 상태에서도 텍스트로 등록 가능 */}
@@ -837,393 +830,3 @@ function AnalyzingState({
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F9FAFB" },
-  topBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 8,
-    paddingVertical: 14,
-    minHeight: 56,
-    backgroundColor: "#FFFFFF",
-    borderBottomWidth: 1,
-    borderBottomColor: "#F3F4F6",
-  },
-  iconBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  topTitle: { fontSize: 16, fontWeight: "700", color: "#111827" },
-  scroll: { padding: 16, paddingBottom: 24 },
-  sourceCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    backgroundColor: "#FFFFFF",
-    padding: 14,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#F3F4F6",
-  },
-  sourceIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  sourceTitle: { color: "#111827", fontWeight: "700", fontSize: 14 },
-  sourceMeta: { color: "#6B7280", fontSize: 12, marginTop: 2 },
-  aiBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    backgroundColor: "#7C3AED",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 999,
-  },
-  aiBadgeText: { color: "#FFFFFF", fontSize: 10, fontWeight: "700" },
-  previewWrap: {
-    position: "relative",
-    borderRadius: 16,
-    overflow: "hidden",
-    backgroundColor: "#000",
-    marginTop: 12,
-  },
-  preview: { width: "100%", height: 200, resizeMode: "contain" },
-  retakeBtn: {
-    position: "absolute",
-    bottom: 10,
-    right: 10,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    backgroundColor: "rgba(17,24,39,0.85)",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-  },
-  retakeText: { color: "#FFFFFF", fontSize: 11, fontWeight: "700" },
-  helperRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginTop: 12,
-  },
-  helperText: { color: "#6B7280", fontSize: 11, flex: 1, lineHeight: 16 },
-  payCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: "#F3F4F6",
-    overflow: "hidden",
-  },
-  payHead: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    gap: 10,
-  },
-  checkbox: { width: 24, height: 24 },
-  checkboxOn: {
-    width: 24,
-    height: 24,
-    borderRadius: 6,
-    backgroundColor: "#3B82F6",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  checkboxOff: {
-    width: 24,
-    height: 24,
-    borderRadius: 6,
-    borderWidth: 1.5,
-    borderColor: "#D1D5DB",
-    backgroundColor: "#FFFFFF",
-  },
-  payRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  payStore: { color: "#111827", fontWeight: "700", fontSize: 14, flex: 1 },
-  payAmount: {
-    color: "#111827",
-    fontWeight: "800",
-    fontSize: 16,
-    marginLeft: 8,
-  },
-  tagRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-    marginTop: 6,
-    alignItems: "center",
-  },
-  payTag: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    backgroundColor: "#F3F4F6",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 999,
-  },
-  payTagText: { color: "#374151", fontSize: 11, fontWeight: "600" },
-  payTime: { color: "#9CA3AF", fontSize: 11, marginLeft: 4 },
-  addrRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 6 },
-  addrText: { color: "#9CA3AF", fontSize: 11 },
-  expandBody: {
-    paddingHorizontal: 14,
-    paddingTop: 6,
-    paddingBottom: 14,
-    borderTopWidth: 1,
-    borderTopColor: "#F3F4F6",
-    backgroundColor: "#F9FAFB",
-  },
-  fieldLabel: {
-    fontSize: 11,
-    color: "#6B7280",
-    fontWeight: "600",
-    marginBottom: 6,
-  },
-  input: {
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
-    color: "#111827",
-  },
-  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
-  chip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-  },
-  chipActive: { backgroundColor: "#EFF6FF", borderColor: "#3B82F6" },
-  chipText: { color: "#6B7280", fontSize: 12, fontWeight: "600" },
-  chipTextActive: { color: "#3B82F6", fontWeight: "700" },
-  catChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-  },
-  catChipText: { color: "#6B7280", fontSize: 12, fontWeight: "600" },
-  aiDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: "#7C3AED",
-  },
-  removeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    alignSelf: "flex-end",
-    marginTop: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-  },
-  removeText: { color: "#EF4444", fontSize: 12, fontWeight: "700" },
-  bottomBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 24,
-    borderTopWidth: 1,
-    borderTopColor: "#F3F4F6",
-    gap: 12,
-  },
-  bottomMeta: { color: "#6B7280", fontSize: 11 },
-  bottomTotal: { color: "#111827", fontSize: 18, fontWeight: "800" },
-  saveBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: "#3B82F6",
-    paddingVertical: 14,
-    paddingHorizontal: 18,
-    borderRadius: 14,
-  },
-  saveBtnText: { color: "#FFFFFF", fontWeight: "800", fontSize: 14 },
-  /* empty */
-  emptyTitle: { fontSize: 22, fontWeight: "800", color: "#111827", marginTop: 8 },
-  emptySub: { color: "#6B7280", fontSize: 13, lineHeight: 20, marginTop: 8 },
-  featureRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 24,
-    marginBottom: 24,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: "#F3F4F6",
-  },
-  featureItem: { alignItems: "center", flex: 1 },
-  featureIconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    backgroundColor: "#F5F3FF",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 6,
-  },
-  featureLabel: { color: "#374151", fontSize: 12, fontWeight: "600" },
-  bigPrimary: {
-    flexDirection: "row",
-    gap: 10,
-    backgroundColor: "#7C3AED",
-    paddingVertical: 16,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  bigPrimaryText: { color: "#FFFFFF", fontWeight: "800", fontSize: 15 },
-  bigSecondary: {
-    flexDirection: "row",
-    gap: 10,
-    backgroundColor: "#F5F3FF",
-    paddingVertical: 16,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 10,
-  },
-  bigSecondaryText: { color: "#7C3AED", fontWeight: "800", fontSize: 15 },
-  tipBox: {
-    flexDirection: "row",
-    gap: 8,
-    alignItems: "flex-start",
-    backgroundColor: "#F3F4F6",
-    padding: 12,
-    borderRadius: 12,
-    marginTop: 16,
-  },
-  tipBoxText: { color: "#6B7280", fontSize: 12, lineHeight: 18, flex: 1 },
-  /* analyzing */
-  analyzePreviewWrap: {
-    width: "70%",
-    aspectRatio: 0.8,
-    borderRadius: 18,
-    overflow: "hidden",
-    backgroundColor: "#000",
-    position: "relative",
-    marginTop: 8,
-  },
-  analyzePreview: { width: "100%", height: "100%", resizeMode: "cover" },
-  scanlineOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(124,58,237,0.25)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  analyzeHeading: {
-    marginTop: 20,
-    fontSize: 17,
-    fontWeight: "700",
-    color: "#111827",
-  },
-  analyzeSub: { color: "#9CA3AF", fontSize: 12, marginTop: 4 },
-  stepList: { width: "100%", marginTop: 20, gap: 12 },
-  stepRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-  stepBadge: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    borderWidth: 1.5,
-    borderColor: "#E5E7EB",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#FFFFFF",
-  },
-  stepBadgeNum: { color: "#9CA3AF", fontSize: 12, fontWeight: "700" },
-  stepLabel: { color: "#9CA3AF", fontSize: 14 },
-
-  /* 텍스트 붙여넣기 진입 */
-  bigGhost: {
-    flexDirection: "row",
-    gap: 10,
-    paddingVertical: 14,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 10,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    backgroundColor: "#FFFFFF",
-  },
-  bigGhostText: { color: "#374151", fontWeight: "700", fontSize: 14 },
-
-  /* 텍스트 붙여넣기 모달 */
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.45)",
-    justifyContent: "flex-end",
-  },
-  modalCard: {
-    backgroundColor: "#FFFFFF",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 20,
-    paddingBottom: 32,
-  },
-  modalHead: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  modalTitle: { fontSize: 16, fontWeight: "800", color: "#111827" },
-  modalSub: {
-    color: "#6B7280",
-    fontSize: 12,
-    marginTop: 6,
-    lineHeight: 17,
-  },
-  modalInput: {
-    marginTop: 14,
-    minHeight: 200,
-    maxHeight: 280,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    borderRadius: 12,
-    padding: 12,
-    fontSize: 13,
-    color: "#111827",
-    backgroundColor: "#F9FAFB",
-    fontFamily: Platform.select({ ios: "Menlo", default: "monospace" }),
-  },
-  modalConfirm: {
-    flexDirection: "row",
-    gap: 8,
-    marginTop: 14,
-    backgroundColor: "#7C3AED",
-    paddingVertical: 14,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  modalConfirmText: { color: "#FFFFFF", fontWeight: "800", fontSize: 14 },
-});

@@ -22,6 +22,7 @@ export function buildAuthHeaders(extra?: Record<string, string>): Record<string,
   const h: Record<string, string> = {
     Accept: "application/json",
     "X-Client": "receipiti-mobile",
+    "ngrok-skip-browser-warning": "true",
     ...(extra ?? {}),
   };
   if (API_AUTH_TOKEN) h.Authorization = `Bearer ${API_AUTH_TOKEN}`;

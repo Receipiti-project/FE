@@ -2,15 +2,24 @@ import { CategoryId } from "@/constants/mockData";
 import { parseReceiptText } from "@/services/parsers/receiptParser";
 import { parseKakaoPayCapture } from "@/services/parsers/kakaoPayParser";
 import {
-  recognizeText,
   fromManualText,
   isServerOcrConfigured,
-  isOnDeviceOcrAvailable, 
+  isOnDeviceOcrAvailable,
   ApiNotConfiguredError,
-  MLKitUnavailableError, 
+  MLKitUnavailableError,
   OcrServerError,
   RecognizedText,
 } from "@/services/textRecognition";
+import {
+  ocrReceipt,
+  createExpenditure,
+  CATEGORY_ID_MAP,
+  guessCategoryFromStoreName,
+  formatIsoToKorean,
+  nowLocalIso,
+} from "@/services/api/expenditureApi";
+import { getServerCategoryId } from "@/services/categoryMapping";
+import { isApiConfigured } from "@/services/api/config";
 
 export {
   ApiNotConfiguredError,
@@ -31,6 +40,7 @@ export type OcrItem = {
 export type ReceiptOcrResult = {
   storeName: string;
   purchasedAt: string;
+  purchasedAtIso?: string;
   totalAmount: number;
   paymentMethod: PaymentMethod;
   items: OcrItem[];
@@ -38,12 +48,14 @@ export type ReceiptOcrResult = {
   categoryConfidence: number;
   rawText: string;
   location?: { lat: number; lng: number; address: string };
+  isManualEntry?: boolean;
 };
 
 export type CapturePayment = {
   store: string;
   amount: number;
   paidAt?: string;
+  paidAtIso?: string;
   method?: PaymentMethod;
   category?: CategoryId;
   confidence?: number;
@@ -58,73 +70,207 @@ export type CaptureOcrResult = {
   payments: CapturePayment[];
 };
 
-/* 영수증 이미지 → 필드 추출 */
+function emptyReceiptResult(): ReceiptOcrResult {
+  return {
+    storeName: "",
+    purchasedAt: "",
+    totalAmount: 0,
+    paymentMethod: "카드",
+    items: [],
+    suggestedCategory: "etc",
+    categoryConfidence: 0,
+    rawText: "",
+    isManualEntry: true,
+  };
+}
+
 export async function parseReceipt(uri: string): Promise<ReceiptOcrResult> {
-  const recognized = await recognizeText(uri, "receipt");
-  return enrichReceipt(parseReceiptText({ recognized, imageUri: uri }));
+  if (!isApiConfigured()) {
+    return emptyReceiptResult();
+  }
+  try {
+    const ocr = await ocrReceipt(uri);
+    const category = guessCategoryFromStoreName(ocr.storeName ?? "");
+    return {
+      storeName: ocr.storeName ?? "",
+      purchasedAt: ocr.paymentDate ? formatIsoToKorean(ocr.paymentDate) : "",
+      purchasedAtIso: ocr.paymentDate || undefined,
+      totalAmount: ocr.amount ?? 0,
+      paymentMethod: "카드",
+      items: [],
+      suggestedCategory: category,
+      categoryConfidence: 0.65,
+      rawText: "",
+    };
+  } catch (e) {
+    if (e instanceof ApiNotConfiguredError) {
+      return emptyReceiptResult();
+    }
+    throw e;
+  }
 }
 
-/* 캡처 이미지 → 결제 N건 추출 */
 export async function parseCapture(uri: string): Promise<CaptureOcrResult> {
-  const recognized = await recognizeText(uri, "capture");
-  return parseKakaoPayCapture({ recognized });
+  if (!isApiConfigured()) {
+    return { source: "unknown", sourceLabel: "캡처 이미지", payments: [] };
+  }
+  try {
+    const ocr = await ocrReceipt(uri);
+    if (ocr.storeName && ocr.amount > 0) {
+      const category = guessCategoryFromStoreName(ocr.storeName);
+      return {
+        source: "unknown",
+        sourceLabel: "캡처 이미지",
+        payments: [
+          {
+            store: ocr.storeName,
+            amount: ocr.amount,
+            paidAt: ocr.paymentDate ? formatIsoToKorean(ocr.paymentDate) : undefined,
+            paidAtIso: ocr.paymentDate || undefined,
+            method: "카드",
+            category,
+            confidence: 0.7,
+          },
+        ],
+      };
+    }
+    return { source: "unknown", sourceLabel: "캡처 이미지", payments: [] };
+  } catch (e) {
+    if (e instanceof ApiNotConfiguredError) {
+      return { source: "unknown", sourceLabel: "캡처 이미지", payments: [] };
+    }
+    throw e;
+  }
 }
 
-/* 사용자가 직접 붙여넣은 텍스트로부터 영수증 결과를 만든다 */
 export function parseReceiptFromText(text: string): ReceiptOcrResult {
   const recognized: RecognizedText = fromManualText(text);
   return enrichReceipt(parseReceiptText({ recognized }));
 }
 
-/* 사용자가 직접 붙여넣은 텍스트로부터 캡처 결과를 만든다 */
 export function parseCaptureFromText(text: string): CaptureOcrResult {
   const recognized: RecognizedText = fromManualText(text);
   return parseKakaoPayCapture({ recognized });
 }
 
 function enrichReceipt(r: ReceiptOcrResult): ReceiptOcrResult {
-  // 파싱 결과가 비어있는 필드는 화면 단에서 사용자가 직접 채워넣을 수 있도록 빈 값으로 그대로 둔다
   return r;
 }
 
-/* 로컬 임시 저장 */
 export type SavedDraft = {
   id: string;
   createdAt: string;
   source: "receipt" | "capture" | "voice" | "sms" | "manual";
   data: unknown;
+  expenditureId?: number;
 };
 
 const _drafts: SavedDraft[] = [];
 
-/* 단건 저장 */
+type ReceiptSavePayload = {
+  storeName: string;
+  purchasedAt: string;
+  purchasedAtIso?: string;
+  totalAmount: number;
+  category: CategoryId;
+  memo?: string;
+  [key: string]: unknown;
+};
+
+type CaptureSavePayload = {
+  store: string;
+  amount: number;
+  paidAt?: string;
+  paidAtIso?: string;
+  category: CategoryId;
+  memo?: string;
+  [key: string]: unknown;
+};
+
 export async function saveTransaction(
   source: SavedDraft["source"],
   data: unknown
 ): Promise<SavedDraft> {
-  await delay(420);
+  let expenditureId: number | undefined;
+
+  if (isApiConfigured()) {
+    try {
+      const d = data as ReceiptSavePayload;
+      const categoryId = getServerCategoryId(d.category ?? "etc");
+      const expenditureDate = d.purchasedAtIso ?? (d.purchasedAt
+        ? (() => {
+            try { return new Date(d.purchasedAt).toISOString(); } catch { return nowLocalIso(); }
+          })()
+        : nowLocalIso());
+
+      const res = await createExpenditure({
+        categoryId,
+        storeName: d.storeName ?? "",
+        amount: d.totalAmount ?? 0,
+        expenditureDate,
+        memo: d.memo ?? "",
+        currency: "KRW",
+      });
+      expenditureId = res.expenditureId;
+    } catch (e) {
+      console.warn("[saveTransaction] API 저장 실패, 로컬 저장으로 폴백:", e);
+    }
+  }
+
   const draft: SavedDraft = {
-    id: `local_${Date.now()}`,
+    id: expenditureId ? `server_${expenditureId}` : `local_${Date.now()}`,
     createdAt: new Date().toISOString(),
     source,
     data,
+    expenditureId,
   };
   _drafts.push(draft);
   return draft;
 }
 
-/* 다건 일괄 저장. 캡처 결과 같이 N건 동시 등록할 때 사용 */
 export async function saveTransactions(
   source: SavedDraft["source"],
   items: unknown[]
 ): Promise<SavedDraft[]> {
-  await delay(520);
-  const created = items.map((data, i) => ({
-    id: `local_${Date.now()}_${i}`,
-    createdAt: new Date().toISOString(),
-    source,
-    data,
-  }));
+  const created: SavedDraft[] = [];
+
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    let expenditureId: number | undefined;
+
+    if (isApiConfigured()) {
+      try {
+        const d = item as CaptureSavePayload;
+        const categoryId = getServerCategoryId(d.category ?? "etc");
+        const expenditureDate = d.paidAtIso ?? (d.paidAt
+          ? (() => {
+              try { return new Date(d.paidAt).toISOString(); } catch { return nowLocalIso(); }
+            })()
+          : nowLocalIso());
+
+        const res = await createExpenditure({
+          categoryId,
+          storeName: d.store ?? "",
+          amount: d.amount ?? 0,
+          expenditureDate,
+          memo: d.memo ?? "",
+          currency: "KRW",
+        });
+        expenditureId = res.expenditureId;
+      } catch (e) {
+        console.warn(`[saveTransactions] 항목 ${i} API 저장 실패:`, e);
+      }
+    }
+
+    created.push({
+      id: expenditureId ? `server_${expenditureId}` : `local_${Date.now()}_${i}`,
+      createdAt: new Date().toISOString(),
+      source,
+      data: item,
+      expenditureId,
+    });
+  }
+
   _drafts.push(...created);
   return created;
 }
@@ -132,8 +278,4 @@ export async function saveTransactions(
 /** 디버깅/검증용 */
 export function _peekDrafts(): SavedDraft[] {
   return [..._drafts];
-}
-
-function delay(ms: number) {
-  return new Promise<void>((res) => setTimeout(res, ms));
 }
