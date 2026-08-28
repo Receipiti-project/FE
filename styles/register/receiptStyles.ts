@@ -1,4 +1,4 @@
-import { Platform, StyleSheet } from "react-native";
+import { StyleSheet } from "react-native";
 
 export const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F9FAFB" },
@@ -158,43 +158,6 @@ export const styles = StyleSheet.create({
     alignItems: "center",
   },
   feedbackText: { color: "#6D28D9", fontSize: 11, flex: 1, lineHeight: 16 },
-  itemRow: {
-    flexDirection: "row",
-    gap: 8,
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  itemNameInput: { flex: 1 },
-  itemPriceInput: { width: 100, textAlign: "right" },
-  removeBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: "#FEF2F2",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  addItemBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingVertical: 10,
-    borderRadius: 10,
-    backgroundColor: "#EFF6FF",
-    marginTop: 4,
-  },
-  addItemText: { color: "#3B82F6", fontWeight: "700", fontSize: 12 },
-  tinyBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 999,
-    backgroundColor: "#EFF6FF",
-  },
-  tinyBtnText: { color: "#3B82F6", fontSize: 11, fontWeight: "700" },
   totalCard: {
     flexDirection: "row",
     alignItems: "center",
@@ -216,20 +179,6 @@ export const styles = StyleSheet.create({
     marginLeft: 4,
   },
   memoInput: { minHeight: 60, textAlignVertical: "top" },
-  rawToggle: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    alignSelf: "center",
-    paddingVertical: 12,
-  },
-  rawToggleText: { color: "#6B7280", fontSize: 12 },
-  rawBox: {
-    backgroundColor: "#111827",
-    borderRadius: 12,
-    padding: 14,
-  },
-  rawText: { color: "#D1D5DB", fontSize: 11, lineHeight: 18, fontFamily: Platform.select({ ios: "Menlo", default: "monospace" }) },
   bottomBar: {
     backgroundColor: "#FFFFFF",
     paddingHorizontal: 16,
@@ -377,68 +326,4 @@ export const styles = StyleSheet.create({
   },
   warnText: { color: "#B45309", fontSize: 11, lineHeight: 16, flex: 1 },
 
-  /* 텍스트 붙여넣기 진입 */
-  bigGhost: {
-    flexDirection: "row",
-    gap: 10,
-    paddingVertical: 14,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 10,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    backgroundColor: "#FFFFFF",
-  },
-  bigGhostText: { color: "#374151", fontWeight: "700", fontSize: 14 },
-
-  /* 텍스트 붙여넣기 모달 */
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.45)",
-    justifyContent: "flex-end",
-  },
-  modalCard: {
-    backgroundColor: "#FFFFFF",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 20,
-    paddingBottom: 32,
-  },
-  modalHead: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  modalTitle: { fontSize: 16, fontWeight: "800", color: "#111827" },
-  modalSub: {
-    color: "#6B7280",
-    fontSize: 12,
-    marginTop: 6,
-    lineHeight: 17,
-  },
-  modalInput: {
-    marginTop: 14,
-    minHeight: 180,
-    maxHeight: 260,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    borderRadius: 12,
-    padding: 12,
-    fontSize: 13,
-    color: "#111827",
-    backgroundColor: "#F9FAFB",
-    fontFamily: Platform.select({ ios: "Menlo", default: "monospace" }),
-  },
-  modalConfirm: {
-    flexDirection: "row",
-    gap: 8,
-    marginTop: 14,
-    backgroundColor: "#3B82F6",
-    paddingVertical: 14,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  modalConfirmText: { color: "#FFFFFF", fontWeight: "800", fontSize: 14 },
 });

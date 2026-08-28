@@ -75,6 +75,11 @@ export type UseExpendituresResult = {
   dayOfWeekPattern: DayOfWeekItem[];
 };
 
+type ExpenditurePeriod = {
+  year: number;
+  month: number;
+};
+
 function toCategoryId(name: string): CategoryId {
   if (!name) return "etc";
   const n = name.trim();
@@ -251,10 +256,13 @@ function processItems(items: DisplayTransaction[], totalAmount: number, recentCo
   };
 }
 
-export function useExpenditures(recentCount = 5): UseExpendituresResult {
+export function useExpenditures(
+  recentCount = 5,
+  period?: ExpenditurePeriod
+): UseExpendituresResult {
   const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth() + 1;
+  const year = period?.year ?? now.getFullYear();
+  const month = period?.month ?? now.getMonth() + 1;
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

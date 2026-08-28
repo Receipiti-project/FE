@@ -1,5 +1,4 @@
 import { CategoryId } from "@/constants/mockData";
-import { parseReceiptText } from "@/services/parsers/receiptParser";
 import { parseKakaoPayCapture } from "@/services/parsers/kakaoPayParser";
 import {
   fromManualText,
@@ -13,7 +12,6 @@ import {
 import {
   ocrReceipt,
   createExpenditure,
-  CATEGORY_ID_MAP,
   guessCategoryFromStoreName,
   formatIsoToKorean,
   nowLocalIso,
@@ -31,22 +29,14 @@ export {
 
 export type PaymentMethod = "카드" | "현금" | "간편결제" | "계좌이체";
 
-export type OcrItem = {
-  name: string;
-  price: number;
-  quantity?: number;
-};
-
 export type ReceiptOcrResult = {
   storeName: string;
   purchasedAt: string;
   purchasedAtIso?: string;
   totalAmount: number;
   paymentMethod: PaymentMethod;
-  items: OcrItem[];
   suggestedCategory: CategoryId;
   categoryConfidence: number;
-  rawText: string;
   location?: { lat: number; lng: number; address: string };
   isManualEntry?: boolean;
 };
@@ -76,10 +66,8 @@ function emptyReceiptResult(): ReceiptOcrResult {
     purchasedAt: "",
     totalAmount: 0,
     paymentMethod: "카드",
-    items: [],
     suggestedCategory: "etc",
     categoryConfidence: 0,
-    rawText: "",
     isManualEntry: true,
   };
 }
@@ -97,10 +85,8 @@ export async function parseReceipt(uri: string): Promise<ReceiptOcrResult> {
       purchasedAtIso: ocr.paymentDate || undefined,
       totalAmount: ocr.amount ?? 0,
       paymentMethod: "카드",
-      items: [],
       suggestedCategory: category,
       categoryConfidence: 0.65,
-      rawText: "",
     };
   } catch (e) {
     if (e instanceof ApiNotConfiguredError) {
@@ -143,18 +129,9 @@ export async function parseCapture(uri: string): Promise<CaptureOcrResult> {
   }
 }
 
-export function parseReceiptFromText(text: string): ReceiptOcrResult {
-  const recognized: RecognizedText = fromManualText(text);
-  return enrichReceipt(parseReceiptText({ recognized }));
-}
-
 export function parseCaptureFromText(text: string): CaptureOcrResult {
   const recognized: RecognizedText = fromManualText(text);
   return parseKakaoPayCapture({ recognized });
-}
-
-function enrichReceipt(r: ReceiptOcrResult): ReceiptOcrResult {
-  return r;
 }
 
 export type SavedDraft = {
@@ -163,6 +140,10 @@ export type SavedDraft = {
   source: "receipt" | "capture" | "voice" | "sms" | "manual";
   data: unknown;
   expenditureId?: number;
+};
+
+type SaveTransactionOptions = {
+  requireServerSave?: boolean;
 };
 
 const _drafts: SavedDraft[] = [];
@@ -189,9 +170,14 @@ type CaptureSavePayload = {
 
 export async function saveTransaction(
   source: SavedDraft["source"],
-  data: unknown
+  data: unknown,
+  options: SaveTransactionOptions = {}
 ): Promise<SavedDraft> {
   let expenditureId: number | undefined;
+
+  if (options.requireServerSave && !isApiConfigured()) {
+    throw new Error("가계부 서버가 연결되지 않아 저장할 수 없어요.");
+  }
 
   if (isApiConfigured()) {
     try {
@@ -213,8 +199,13 @@ export async function saveTransaction(
       });
       expenditureId = res.expenditureId;
     } catch (e) {
+      if (options.requireServerSave) throw e;
       console.warn("[saveTransaction] API 저장 실패, 로컬 저장으로 폴백:", e);
     }
+  }
+
+  if (options.requireServerSave && !expenditureId) {
+    throw new Error("서버에서 저장 결과를 확인하지 못했어요.");
   }
 
   const draft: SavedDraft = {

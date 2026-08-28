@@ -216,11 +216,24 @@ export async function ocrReceipt(uri: string): Promise<OcrApiResponse> {
   }
   clearTimeout(timer);
 
+  if (res.redirected || res.url.includes("/oauth2/authorization/")) {
+    throw new Error(
+      "AUTH_EXPIRED:로그인 토큰이 만료됐어요. 새 토큰으로 갱신한 뒤 앱을 재시작해주세요."
+    );
+  }
+
   if (!res.ok) {
     if (res.status === 401 || res.status === 403) {
       throw new Error(`AUTH_EXPIRED:토큰이 만료됐어요. .env의 토큰을 갱신하고 앱을 재시작해주세요. (HTTP ${res.status})`);
     }
     throw new Error(`OCR 서버 오류 (HTTP ${res.status})`);
+  }
+
+  const contentType = res.headers.get("content-type") ?? "";
+  if (!contentType.includes("application/json")) {
+    throw new Error(
+      "OCR 서버가 JSON이 아닌 응답을 반환했어요. API 주소와 인증 토큰을 확인해주세요."
+    );
   }
 
   const json = await res.json();
