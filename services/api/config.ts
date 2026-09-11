@@ -1,10 +1,10 @@
+const DEFAULT_API_BASE_URL = "http://receipiti.store";
+
 export const API_BASE_URL: string =
-  ((process.env as any).EXPO_PUBLIC_API_BASE_URL as string | undefined)?.trim() ??
-  "";
+  process.env.EXPO_PUBLIC_API_BASE_URL?.trim() || DEFAULT_API_BASE_URL;
 
 export const API_AUTH_TOKEN: string =
-  ((process.env as any).EXPO_PUBLIC_API_AUTH_TOKEN as string | undefined)?.trim() ??
-  "";
+  process.env.EXPO_PUBLIC_API_AUTH_TOKEN?.trim() ?? "";
 
 let sessionAuthToken: string | null | undefined;
 
@@ -18,7 +18,6 @@ export function buildAuthHeaders(extra?: Record<string, string>): Record<string,
   const h: Record<string, string> = {
     Accept: "application/json",
     "X-Client": "receipiti-mobile",
-    "ngrok-skip-browser-warning": "true",
     ...(extra ?? {}),
   };
   const token = sessionAuthToken === undefined ? API_AUTH_TOKEN : sessionAuthToken;

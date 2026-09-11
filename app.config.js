@@ -1,5 +1,6 @@
 const appJson = require('./app.json');
-const allowHttpApi = (process.env.EXPO_PUBLIC_API_BASE_URL ?? '').startsWith('http://');
+const apiBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://receipiti.store';
+const allowHttpApi = apiBaseUrl.startsWith('http://');
 
 module.exports = () => ({
   ...appJson.expo,
