@@ -1,26 +1,21 @@
-import { useCallback, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Linking, Pressable, StyleSheet, Text, View } from "react-native";
+import { useEffect, useRef } from "react";
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { WebView, WebViewNavigation } from "react-native-webview";
+import * as WebBrowser from "expo-web-browser";
 import { getKakaoLoginUrl } from "@/services/auth";
 
-const AUTH_REQUEST_NOT_FOUND = "authorization_request_not_found";
-const MAX_OAUTH_RESTARTS = 1;
-const OAUTH_ERROR_DETECTOR = `
-  (function () {
-    if (document.body && document.body.innerText.includes("${AUTH_REQUEST_NOT_FOUND}")) {
-      window.ReactNativeWebView.postMessage("${AUTH_REQUEST_NOT_FOUND}");
-    }
-  })();
-  true;
-`;
+const KAKAO_CALLBACK_URL = "receipiti://auth/kakao";
 
 function callbackParams(url: string): { loginCode?: string; error?: string } | null {
   try {
     const parsed = new URL(url);
-    if (parsed.protocol !== "receipiti:" || parsed.hostname !== "auth" || parsed.pathname !== "/kakao") {
+    if (
+      parsed.protocol !== "receipiti:" ||
+      parsed.hostname !== "auth" ||
+      parsed.pathname !== "/kakao"
+    ) {
       return null;
     }
 
@@ -33,44 +28,44 @@ function callbackParams(url: string): { loginCode?: string; error?: string } | n
   }
 }
 
-export default function KakaoLoginWebViewScreen() {
-  const [loading, setLoading] = useState(true);
-  const [oauthAttempt, setOauthAttempt] = useState(0);
-  const callbackHandled = useRef(false);
-  const loginSource = useMemo(() => ({ uri: getKakaoLoginUrl() }), []);
+export default function KakaoLoginScreen() {
+  const started = useRef(false);
 
-  const restartOAuth = useCallback(() => {
-    if (oauthAttempt >= MAX_OAUTH_RESTARTS) {
-      Alert.alert(
-        "로그인 세션 오류",
-        "새 로그인 세션을 만들지 못했어요. 로그인 창을 닫고 다시 시도해주세요."
-      );
-      return;
-    }
+  useEffect(() => {
+    if (started.current) return;
+    started.current = true;
 
-    callbackHandled.current = false;
-    setLoading(true);
-    setOauthAttempt((attempt) => attempt + 1);
-  }, [oauthAttempt]);
+    const startLogin = async () => {
+      try {
+        const result = await WebBrowser.openAuthSessionAsync(
+          getKakaoLoginUrl(),
+          KAKAO_CALLBACK_URL,
+          {
+            presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
+          }
+        );
 
-  const handleNavigation = useCallback((request: WebViewNavigation): boolean => {
-    const params = callbackParams(request.url);
-    if (params) {
-      if (!callbackHandled.current) {
-        callbackHandled.current = true;
+        if (result.type !== "success") {
+          router.replace("/login");
+          return;
+        }
+
+        const params = callbackParams(result.url);
+        if (!params) {
+          throw new Error("로그인 결과 주소를 확인할 수 없어요.");
+        }
+
         router.replace({ pathname: "/auth/kakao", params });
+      } catch (error) {
+        Alert.alert(
+          "로그인 실패",
+          (error as Error)?.message ?? "카카오 로그인 창을 열지 못했어요.",
+          [{ text: "확인", onPress: () => router.replace("/login") }]
+        );
       }
-      return false;
-    }
+    };
 
-    if (!request.url.startsWith("http://") && !request.url.startsWith("https://")) {
-      Linking.openURL(request.url).catch(() => {
-        Alert.alert("앱을 열 수 없어요", "카카오 계정으로 로그인을 선택해주세요.");
-      });
-      return false;
-    }
-
-    return true;
+    void startLogin();
   }, []);
 
   return (
@@ -80,7 +75,7 @@ export default function KakaoLoginWebViewScreen() {
           accessibilityLabel="로그인 닫기"
           accessibilityRole="button"
           hitSlop={12}
-          onPress={() => router.back()}
+          onPress={() => router.replace("/login")}
           style={styles.closeButton}
         >
           <Ionicons name="close" size={26} color="#111827" />
@@ -89,38 +84,10 @@ export default function KakaoLoginWebViewScreen() {
         <View style={styles.headerSpacer} />
       </View>
 
-      <WebView
-        key={`kakao-oauth-${oauthAttempt}`}
-        source={loginSource}
-        originWhitelist={["http://*", "https://*", "receipiti://*"]}
-        onShouldStartLoadWithRequest={handleNavigation}
-        injectedJavaScript={OAUTH_ERROR_DETECTOR}
-        onMessage={(event) => {
-          if (event.nativeEvent.data === AUTH_REQUEST_NOT_FOUND) {
-            restartOAuth();
-          }
-        }}
-        onLoadEnd={() => setLoading(false)}
-        onError={() => {
-          if (!callbackHandled.current) {
-            Alert.alert("로그인 페이지 오류", "로그인 페이지를 불러오지 못했어요. 다시 시도해주세요.");
-          }
-        }}
-        javaScriptEnabled
-        domStorageEnabled
-        incognito
-        cacheEnabled={false}
-        sharedCookiesEnabled={false}
-        thirdPartyCookiesEnabled={false}
-        setSupportMultipleWindows={false}
-        style={styles.webView}
-      />
-
-      {loading && (
-        <View pointerEvents="none" style={styles.loading}>
-          <ActivityIndicator size="large" color="#3B82F6" />
-        </View>
-      )}
+      <View style={styles.content}>
+        <ActivityIndicator size="large" color="#3B82F6" />
+        <Text style={styles.statusText}>카카오 로그인 창을 여는 중이에요...</Text>
+      </View>
     </SafeAreaView>
   );
 }
@@ -135,15 +102,25 @@ const styles = StyleSheet.create({
     borderBottomColor: "#E5E7EB",
     paddingHorizontal: 16,
   },
-  closeButton: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
-  title: { flex: 1, textAlign: "center", color: "#111827", fontSize: 17, fontWeight: "700" },
-  headerSpacer: { width: 36 },
-  webView: { flex: 1, backgroundColor: "#FFFFFF" },
-  loading: {
-    ...StyleSheet.absoluteFillObject,
-    top: 52,
+  closeButton: {
+    width: 36,
+    height: 36,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#FFFFFF",
   },
+  title: {
+    flex: 1,
+    textAlign: "center",
+    color: "#111827",
+    fontSize: 17,
+    fontWeight: "700",
+  },
+  headerSpacer: { width: 36 },
+  content: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 16,
+  },
+  statusText: { color: "#4B5563", fontSize: 15, fontWeight: "600" },
 });
