@@ -20,7 +20,10 @@ import {
   nowAsDatetimeLocal,
   datetimeLocalToIso,
 } from "@/services/api/expenditureApi";
-import { getCategoryRecommendation } from "@/services/api/categoryApi";
+import {
+  getCategoryRecommendation,
+  resolveRecommendedCategoryId,
+} from "@/services/api/categoryApi";
 import { nameToLocalCategoryId } from "@/services/categoryMapping";
 import { useCategories } from "@/contexts/CategoryContext";
 
@@ -62,10 +65,10 @@ export default function ManualScreen() {
     if (!storeName) return;
 
     const recommendation = await getCategoryRecommendation(storeName).catch(() => null);
-    const recommendedCategoryId = recommendation?.autoApplicable
-      && categories.some((category) => category.categoryId === recommendation.categoryId)
-      ? recommendation.categoryId
-      : null;
+    const recommendedCategoryId = resolveRecommendedCategoryId(
+      recommendation,
+      categories
+    );
 
     setForm((prev) => ({
       ...prev,

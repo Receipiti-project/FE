@@ -28,7 +28,10 @@ import {
 } from "@/services/ocr";
 import { useCategories } from "@/contexts/CategoryContext";
 import { nameToLocalCategoryId } from "@/services/categoryMapping";
-import { getCategoryRecommendation } from "@/services/api/categoryApi";
+import {
+  getCategoryRecommendation,
+  resolveRecommendedCategoryId,
+} from "@/services/api/categoryApi";
 
 const HITSLOP = { top: 12, bottom: 12, left: 12, right: 12 } as const;
 
@@ -141,10 +144,10 @@ export default function ReceiptScreen() {
       const recommendation = res.storeName
         ? await getCategoryRecommendation(res.storeName).catch(() => null)
         : null;
-      const recommendedCategoryId = recommendation?.autoApplicable
-        && categories.some((category) => category.categoryId === recommendation.categoryId)
-        ? recommendation.categoryId
-        : null;
+      const recommendedCategoryId = resolveRecommendedCategoryId(
+        recommendation,
+        categories
+      );
       applyOcrResult(
         res,
         recommendedCategoryId,
@@ -190,10 +193,10 @@ export default function ReceiptScreen() {
     if (!storeName) return;
 
     const recommendation = await getCategoryRecommendation(storeName).catch(() => null);
-    const recommendedCategoryId = recommendation?.autoApplicable
-      && categories.some((category) => category.categoryId === recommendation.categoryId)
-      ? recommendation.categoryId
-      : null;
+    const recommendedCategoryId = resolveRecommendedCategoryId(
+      recommendation,
+      categories
+    );
 
     setDraft((prev) => {
       if (!prev) return prev;

@@ -19,6 +19,19 @@ export type CategoryRecommendation = {
   reason: "SAME_STORE" | "SAME_BRAND" | "SAME_BUSINESS_CATEGORY";
 };
 
+/** 서버가 추천한 카테고리가 현재 사용자의 카테고리 목록에 있으면 선택합니다. */
+export function resolveRecommendedCategoryId(
+  recommendation: CategoryRecommendation | null,
+  categories: CategoryApiItem[]
+): number | null {
+  if (!recommendation) return null;
+  return categories.some(
+    (category) => category.categoryId === recommendation.categoryId
+  )
+    ? recommendation.categoryId
+    : null;
+}
+
 async function errorMessage(response: Response, fallback: string): Promise<string> {
   const body = await response.json().catch(() => null) as { message?: string } | null;
   return body?.message || `${fallback} (HTTP ${response.status})`;

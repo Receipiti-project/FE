@@ -30,7 +30,11 @@ import {
   saveTransactions,
 } from "@/services/ocr";
 import { useCategories } from "@/contexts/CategoryContext";
-import { CategoryApiItem, getCategoryRecommendation } from "@/services/api/categoryApi";
+import {
+  CategoryApiItem,
+  getCategoryRecommendation,
+  resolveRecommendedCategoryId,
+} from "@/services/api/categoryApi";
 import { nameToLocalCategoryId } from "@/services/categoryMapping";
 
 const HITSLOP = { top: 12, bottom: 12, left: 12, right: 12 } as const;
@@ -113,10 +117,10 @@ export default function CaptureScreen() {
         const recommendation = p.store
           ? await getCategoryRecommendation(p.store).catch(() => null)
           : null;
-        const recommendedCategoryId = recommendation?.autoApplicable
-          && categories.some((category) => category.categoryId === recommendation.categoryId)
-          ? recommendation.categoryId
-          : null;
+        const recommendedCategoryId = resolveRecommendedCategoryId(
+          recommendation,
+          categories
+        );
 
         return {
           id: `p_${i}`,
