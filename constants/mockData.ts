@@ -334,7 +334,7 @@ export const AI_SUGGESTED_QUESTIONS = [
   "회사 주변 점심 평균값은?",
 ];
 
-/* 카테고리 자동학습 상태 */
+/* 홈 화면 자동학습 상태 */
 export const CATEGORIZATION_STATS = {
   autoMatched: 42,
   userCorrected: 6,

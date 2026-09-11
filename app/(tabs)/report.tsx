@@ -11,12 +11,11 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import {
   AI_SUGGESTED_QUESTIONS,
-  CATEGORIZATION_STATS,
   formatKRW,
   getCategory,
 } from "@/constants/mockData";
 import { useExpenditures } from "@/hooks/useExpenditures";
-import { createReport } from "@/services/api/reportApi";
+import { MonthlyAiReport } from "@/components/report/monthly-ai-report";
 
 const RANGES = ["이번주", "이번달"] as const;
 type Range = (typeof RANGES)[number];
@@ -45,28 +44,6 @@ export default function ReportScreen() {
     dayOfWeekPattern,
     refetch,
   } = useExpenditures();
-
-  const [aiReport, setAiReport] = useState<string | null>(null);
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiError, setAiError] = useState<string | null>(null);
-
-  const handleGenerateReport = async () => {
-    setAiLoading(true);
-    setAiError(null);
-    try {
-      const now = new Date();
-      const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-      const expenditureData = allItems
-        .map((t) => `${t.datetime} ${t.store} ${t.categoryName} ${t.amount}원`)
-        .join("\n");
-      const res = await createReport(month, expenditureData);
-      setAiReport(res.report);
-    } catch (e) {
-      setAiError((e as Error)?.message ?? "리포트 생성에 실패했어요.");
-    } finally {
-      setAiLoading(false);
-    }
-  };
 
   // 기간 필터 적용
   const weekStart = useMemo(() => currentWeekStart(), []);
@@ -349,33 +326,7 @@ export default function ReportScreen() {
           </View>
         </View>
 
-        {/* AI 리포트 */}
-        <View style={styles.section}>
-          <View style={styles.sectionHead}>
-            <View style={styles.aiTitleRow}>
-              <Ionicons name="sparkles-outline" size={16} color="#3B82F6" />
-              <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>AI 소비 리포트</Text>
-            </View>
-            <TouchableOpacity onPress={handleGenerateReport} disabled={aiLoading}>
-              <Text style={[styles.metaTinyLabel, { color: "#3B82F6", fontWeight: "700" }]}>
-                {aiReport ? "다시 생성" : "생성하기"}
-              </Text>
-            </TouchableOpacity>
-          </View>
-          <View style={[styles.insightCard, { borderLeftColor: "#3B82F6" }]}>
-            {aiLoading ? (
-              <ActivityIndicator color="#3B82F6" style={{ paddingVertical: 8 }} />
-            ) : aiError ? (
-              <Text style={[styles.insightBody, { color: "#DC2626" }]}>{aiError}</Text>
-            ) : aiReport ? (
-              <Text style={styles.insightBody}>{aiReport}</Text>
-            ) : (
-              <Text style={styles.insightBody}>
-                이번 달 소비 데이터를 바탕으로 AI 리포트를 생성해보세요.
-              </Text>
-            )}
-          </View>
-        </View>
+        <MonthlyAiReport />
 
         {/* Top 매장 */}
         <View style={styles.section}>
@@ -413,39 +364,6 @@ export default function ReportScreen() {
           )}
         </View>
 
-        {/* 카테고리 자동분류 통계 */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>카테고리 자동분류</Text>
-          <View style={styles.classifyCard}>
-            <View style={styles.classifyRow}>
-              <View style={[styles.classifyStat, { borderRightWidth: 1 }]}>
-                <Text style={styles.classifyValue}>{CATEGORIZATION_STATS.autoMatched}</Text>
-                <Text style={styles.classifyLabel}>자동 매칭</Text>
-              </View>
-              <View style={[styles.classifyStat, { borderRightWidth: 1 }]}>
-                <Text style={[styles.classifyValue, { color: "#7C3AED" }]}>{CATEGORIZATION_STATS.userCorrected}</Text>
-                <Text style={styles.classifyLabel}>내가 수정</Text>
-              </View>
-              <View style={styles.classifyStat}>
-                <Text style={[styles.classifyValue, { color: "#F59E0B" }]}>{CATEGORIZATION_STATS.pending}</Text>
-                <Text style={styles.classifyLabel}>분류 대기</Text>
-              </View>
-            </View>
-            <View style={styles.classifyAccBox}>
-              <View style={styles.classifyAccHead}>
-                <Text style={styles.classifyAccLabel}>분류 정확도</Text>
-                <Text style={styles.classifyAccVal}>{Math.round(CATEGORIZATION_STATS.accuracy * 100)}%</Text>
-              </View>
-              <View style={styles.classifyTrack}>
-                <View style={[styles.classifyFill, { width: `${CATEGORIZATION_STATS.accuracy * 100}%` }]} />
-              </View>
-              <Text style={styles.classifyHint}>
-                내 수정 이력이 많을수록 더 정확해져요.
-              </Text>
-            </View>
-          </View>
-        </View>
-
         <View style={{ height: 24 }} />
       </ScrollView>
     </SafeAreaView>
@@ -472,9 +390,6 @@ const styles = StyleSheet.create({
   metaValue: { color: "#111827", fontWeight: "700", fontSize: 13 },
   divider: { width: 1, height: 24, backgroundColor: "#F3F4F6" },
   section: { marginTop: 24 },
-  sectionHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
-  aiTitleRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  metaTinyLabel: { color: "#9CA3AF", fontSize: 11 },
   sectionTitle: { fontSize: 15, fontWeight: "700", color: "#111827", marginBottom: 12 },
   trendCard: { backgroundColor: "#FFFFFF", borderRadius: 16, padding: 16, borderWidth: 1, borderColor: "#F3F4F6" },
   barRow: { flexDirection: "row", alignItems: "flex-end", height: 160, gap: 8 },
@@ -492,10 +407,6 @@ const styles = StyleSheet.create({
   catAmt: { color: "#111827", fontWeight: "700", fontSize: 13 },
   catBarTrack: { height: 6, backgroundColor: "#F3F4F6", borderRadius: 999, overflow: "hidden" },
   catBarFill: { height: "100%", borderRadius: 999 },
-  insightCard: { flexDirection: "row", backgroundColor: "#FFFFFF", borderRadius: 16, padding: 14, borderWidth: 1, borderColor: "#F3F4F6", borderLeftWidth: 4, gap: 12, alignItems: "flex-start" },
-  insightIcon: { width: 36, height: 36, borderRadius: 10, alignItems: "center", justifyContent: "center" },
-  insightTitle: { color: "#111827", fontSize: 14, fontWeight: "700", marginBottom: 4 },
-  insightBody: { color: "#4B5563", fontSize: 12, lineHeight: 18 },
   storeList: { backgroundColor: "#FFFFFF", borderRadius: 16, borderWidth: 1, borderColor: "#F3F4F6", overflow: "hidden" },
   storeRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: "#F3F4F6", gap: 12 },
   rankBadge: { width: 28, height: 28, borderRadius: 14, backgroundColor: "#EFF6FF", alignItems: "center", justifyContent: "center" },
@@ -528,17 +439,5 @@ const styles = StyleSheet.create({
   chatPromptList: { gap: 8, marginTop: 14 },
   chatPrompt: { flexDirection: "row", alignItems: "center", backgroundColor: "rgba(255,255,255,0.06)", borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderColor: "rgba(255,255,255,0.08)" },
   chatPromptText: { color: "#E0E7FF", fontSize: 12, fontWeight: "600", flex: 1 },
-  classifyCard: { backgroundColor: "#FFFFFF", borderRadius: 16, padding: 16, borderWidth: 1, borderColor: "#F3F4F6" },
-  classifyRow: { flexDirection: "row" },
-  classifyStat: { flex: 1, alignItems: "center", paddingVertical: 8, borderRightColor: "#F3F4F6" },
-  classifyValue: { fontSize: 22, fontWeight: "800", color: "#111827" },
-  classifyLabel: { fontSize: 11, color: "#6B7280", marginTop: 4 },
-  classifyAccBox: { marginTop: 12, paddingTop: 14, borderTopWidth: 1, borderTopColor: "#F3F4F6" },
-  classifyAccHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  classifyAccLabel: { color: "#6B7280", fontWeight: "600", fontSize: 12 },
-  classifyAccVal: { color: "#111827", fontWeight: "800", fontSize: 14 },
-  classifyTrack: { height: 6, backgroundColor: "#F3F4F6", borderRadius: 999, marginTop: 8, overflow: "hidden" },
-  classifyFill: { height: "100%", backgroundColor: "#10B981", borderRadius: 999 },
-  classifyHint: { color: "#9CA3AF", fontSize: 11, lineHeight: 16, marginTop: 10 },
   emptyText: { color: "#9CA3AF", fontSize: 13, textAlign: "center" },
 });
