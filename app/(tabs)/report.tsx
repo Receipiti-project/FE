@@ -155,6 +155,9 @@ export default function ReportScreen() {
           </View>
         </View>
 
+        {/* 선택한 월을 서버 AI 리포트 API로 분석 */}
+        <MonthlyAiReport />
+
         {/* 주간/일별 트렌드 */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>일별 추이</Text>
@@ -325,8 +328,6 @@ export default function ReportScreen() {
             </View>
           </View>
         </View>
-
-        <MonthlyAiReport />
 
         {/* Top 매장 */}
         <View style={styles.section}>
