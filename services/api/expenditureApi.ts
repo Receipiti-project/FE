@@ -1,28 +1,9 @@
-import { CategoryId } from "@/constants/mockData";
 import {
   API_OCR_TIMEOUT_MS,
   apiUrl,
   buildAuthHeaders,
   isApiConfigured,
 } from "@/services/api/config";
-
-export const CATEGORY_ID_MAP: Record<CategoryId, number> = {
-  food:      1,
-  transport: 2,
-  shopping:  3,
-  culture:   4,
-  health:    5,
-  etc:       6,
-};
-
-export const CATEGORY_ID_REVERSE: Record<number, CategoryId> = {
-  1: "food",
-  2: "transport",
-  3: "shopping",
-  4: "culture",
-  5: "health",
-  6: "etc",
-};
 
 /* ─── 응답/요청 타입 ─── */
 
@@ -31,6 +12,18 @@ export type OcrApiResponse = {
   storeName: string;
   amount: number;
   paymentDate: string; // ISO 8601
+};
+
+/** POST /api/v1/expenditures/card-notification/analyze 응답 */
+export type CardNotificationAnalysisResponse = {
+  paymentNotification: boolean;
+  cardCompany?: string;
+  storeName?: string;
+  amount?: number;
+  paymentDateTime?: string;
+  currency?: string;
+  approvalStatus?: string;
+  confidence?: number;
 };
 
 /* ─── GET /api/v1/expenditures (월별 목록) 타입 ─── */
@@ -63,8 +56,10 @@ export type MonthlyExpenditureResponse = {
 
 /** POST /api/v1/expenditures 요청 */
 export type CreateExpenditureDto = {
-  categoryId: number;
+  /** 사용자가 직접 카테고리를 선택한 경우에만 전달 */
+  categoryId?: number;
   storeName: string;
+  businessCategory?: string;
   amount: number;
   expenditureDate: string; // ISO 8601
   memo?: string;
@@ -79,6 +74,11 @@ export type CreateExpenditureResponse = {
   expenditureDate: string;
   memo?: string;
   currency: string;
+  categoryId: number;
+  categoryName: string;
+  classificationType: "USER_SELECTED" | "PERSONALIZED_AUTO" | "SYSTEM_DEFAULT";
+  confidence?: number;
+  recommendationReason?: "SAME_STORE" | "SAME_BRAND" | "SAME_BUSINESS_CATEGORY";
 };
 
 /** GET /api/v1/expenditures/{id} 응답 */
@@ -107,81 +107,14 @@ export type UpdateExpenditureDto = {
   currency?: string;
 };
 
-/* ─── 카테고리 타입 ─── */
-
-export type CategoryApiItem = {
-  categoryId: number;
-  name: string;
-  categoryType: string;
-  custom: boolean;
-};
-
 /* ─── API 함수 ─── */
 
-/**
- * GET /api/v1/categories
- * 공통 + 유저 커스텀 카테고리 목록 조회
- */
-export async function getCategories(): Promise<CategoryApiItem[]> {
-  if (!isApiConfigured()) return [];
-  const url = apiUrl("/api/v1/categories");
-  const res = await fetch(url, { headers: buildAuthHeaders() });
-  if (!res.ok) throw new Error(`카테고리 조회 실패 (HTTP ${res.status})`);
-  return res.json();
-}
-
-/**
- * POST /api/v1/categories
- * 커스텀 카테고리 생성
- */
-export async function createCategory(name: string): Promise<CategoryApiItem> {
-  if (!isApiConfigured()) throw new Error("API_BASE_URL 미설정");
-  const url = apiUrl("/api/v1/categories");
-  const res = await fetch(url, {
-    method: "POST",
-    headers: buildAuthHeaders({ "Content-Type": "application/json" }),
-    body: JSON.stringify({ name }),
-  });
-  if (!res.ok) throw new Error(`카테고리 생성 실패 (HTTP ${res.status})`);
-  return res.json();
-}
-
-/**
- * PATCH /api/v1/categories/rules/{id}
- * 커스텀 카테고리 이름 수정
- */
-export async function updateCategoryRule(id: number, name: string): Promise<CategoryApiItem> {
-  if (!isApiConfigured()) throw new Error("API_BASE_URL 미설정");
-  const url = apiUrl(`/api/v1/categories/rules/${id}`);
-  const res = await fetch(url, {
-    method: "PATCH",
-    headers: buildAuthHeaders({ "Content-Type": "application/json" }),
-    body: JSON.stringify({ name }),
-  });
-  if (!res.ok) throw new Error(`카테고리 수정 실패 (HTTP ${res.status})`);
-  return res.json();
-}
-
-/**
- * DELETE /api/v1/categories/rules/{id}
- * 커스텀 카테고리 삭제 (사용 중인 카테고리는 삭제 불가)
- */
-export async function deleteCategoryRule(id: number): Promise<void> {
-  if (!isApiConfigured()) throw new Error("API_BASE_URL 미설정");
-  const url = apiUrl(`/api/v1/categories/rules/${id}`);
-  const res = await fetch(url, { method: "DELETE", headers: buildAuthHeaders() });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`카테고리 삭제 실패 (HTTP ${res.status})${text ? `: ${text}` : ""}`);
-  }
-}
-
-/**
- * POST /api/v1/expenditures/ocr
- * 영수증/캡처 이미지를 서버로 전송 → 상호명·금액·날짜 추출
- */
-export async function ocrReceipt(uri: string): Promise<OcrApiResponse> {
-  const url = apiUrl("/api/v1/expenditures/ocr");
+async function postExpenditureImage<T>(
+  path: string,
+  uri: string,
+  label: string
+): Promise<T> {
+  const url = apiUrl(path);
   const headers = buildAuthHeaders();
 
   const form = new FormData();
@@ -210,8 +143,8 @@ export async function ocrReceipt(uri: string): Promise<OcrApiResponse> {
     clearTimeout(timer);
     const msg =
       (e as Error)?.name === "AbortError"
-        ? `OCR 요청이 ${Math.round(API_OCR_TIMEOUT_MS / 1000)}초를 초과했어요.`
-        : `OCR 요청 실패: ${(e as Error)?.message ?? "네트워크 오류"}`;
+        ? `${label} 요청이 ${Math.round(API_OCR_TIMEOUT_MS / 1000)}초를 초과했어요.`
+        : `${label} 요청 실패: ${(e as Error)?.message ?? "네트워크 오류"}`;
     throw new Error(msg);
   }
   clearTimeout(timer);
@@ -226,13 +159,13 @@ export async function ocrReceipt(uri: string): Promise<OcrApiResponse> {
     if (res.status === 401 || res.status === 403) {
       throw new Error(`AUTH_EXPIRED:토큰이 만료됐어요. .env의 토큰을 갱신하고 앱을 재시작해주세요. (HTTP ${res.status})`);
     }
-    throw new Error(`OCR 서버 오류 (HTTP ${res.status})`);
+    throw new Error(`${label} 서버 오류 (HTTP ${res.status})`);
   }
 
   const contentType = res.headers.get("content-type") ?? "";
   if (!contentType.includes("application/json")) {
     throw new Error(
-      "OCR 서버가 JSON이 아닌 응답을 반환했어요. API 주소와 인증 토큰을 확인해주세요."
+      `${label} 서버가 JSON이 아닌 응답을 반환했어요. API 주소와 인증 토큰을 확인해주세요.`
     );
   }
 
@@ -243,7 +176,29 @@ export async function ocrReceipt(uri: string): Promise<OcrApiResponse> {
     throw new Error(`AUTH_EXPIRED:토큰이 만료됐거나 인증에 실패했어요. .env의 토큰을 갱신하고 앱을 재시작해주세요. (status: ${json.status})`);
   }
 
-  return json as OcrApiResponse;
+  return json as T;
+}
+
+/**
+ * POST /api/v1/expenditures/ocr
+ * 영수증 이미지를 서버로 전송 → 상호명·금액·날짜 추출
+ */
+export function ocrReceipt(uri: string): Promise<OcrApiResponse> {
+  return postExpenditureImage("/api/v1/expenditures/ocr", uri, "OCR");
+}
+
+/**
+ * POST /api/v1/expenditures/card-notification/analyze
+ * 카드 결제 알림 이미지를 서버로 전송 → 결제 정보 분석
+ */
+export function analyzeCardNotification(
+  uri: string
+): Promise<CardNotificationAnalysisResponse> {
+  return postExpenditureImage(
+    "/api/v1/expenditures/card-notification/analyze",
+    uri,
+    "카드 결제 이미지 분석"
+  );
 }
 
 /**
@@ -411,15 +366,4 @@ export async function getMonthlyExpenditures(
   }
 
   return res.json() as Promise<MonthlyExpenditureResponse>;
-}
-
-/** 가맹점명 기반 카테고리 추측 — 서버 6개 카테고리 기준 */
-export function guessCategoryFromStoreName(storeName: string): CategoryId {
-  const name = storeName.toLowerCase();
-  if (/지하철|버스|택시|카카오t|주유|ktx|기차|항공|공항|교통|티머니|주차/.test(name)) return "transport";
-  if (/스타벅스|커피|cafe|카페|이디야|투썸|빽다방|할리스|식당|마트|편의점|gs25|cu|세븐|맥도날드|버거|치킨|pizza|피자|분식|삼겹|고기|한식|중식|일식|국밥/.test(name)) return "food";
-  if (/쿠팡|올리브영|다이소|이마트|롯데마트|홈플러스|쇼핑|패션|의류|신발/.test(name)) return "shopping";
-  if (/cgv|영화|롯데시네마|메가박스|게임|여행|숙박|호텔|공연|전시/.test(name)) return "culture";
-  if (/병원|약국|헬스|gym|의원|클리닉|한의원|치과|안과/.test(name)) return "health";
-  return "etc";
 }

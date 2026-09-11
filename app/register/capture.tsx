@@ -18,13 +18,10 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { styles } from "@/styles/register/captureStyles";
 import {
-  CATEGORIES,
-  CategoryId,
   formatKRW,
   getCategory,
 } from "@/constants/mockData";
 import {
-  CaptureOcrUnavailableError,
   CaptureOcrResult,
   CaptureSource,
   parseCapture,
@@ -32,6 +29,9 @@ import {
   PaymentMethod,
   saveTransactions,
 } from "@/services/ocr";
+import { useCategories } from "@/contexts/CategoryContext";
+import { CategoryApiItem, getCategoryRecommendation } from "@/services/api/categoryApi";
+import { nameToLocalCategoryId } from "@/services/categoryMapping";
 
 const HITSLOP = { top: 12, bottom: 12, left: 12, right: 12 } as const;
 
@@ -44,9 +44,10 @@ type DraftPayment = {
   paidAt?: string;
   paidAtIso?: string;
   method: PaymentMethod;
-  category: CategoryId;
-  initialCategory: CategoryId;
+  categoryId: number | null;
+  initialCategoryId: number | null;
   confidence: number;
+  currency: string;
   address?: string;
   include: boolean;
   expanded: boolean;
@@ -74,6 +75,7 @@ const SOURCE_LABEL_MAP: Record<CaptureSource, { icon: keyof typeof Ionicons.glyp
 };
 
 export default function CaptureScreen() {
+  const { categories } = useCategories();
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [step, setStep] = useState<Step>("idle");
   const [analysisStep, setAnalysisStep] = useState(0);
@@ -83,7 +85,6 @@ export default function CaptureScreen() {
   const [pasteOpen, setPasteOpen] = useState(false);
   const [pasteText, setPasteText] = useState("");
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const ocrAvailable = false;
 
   useEffect(() => {
     return () => {
@@ -104,25 +105,37 @@ export default function CaptureScreen() {
     setSourceLabel("");
   };
 
-  const applyOcrResult = (res: CaptureOcrResult) => {
+  const applyOcrResult = async (res: CaptureOcrResult) => {
     setSource(res.source);
     setSourceLabel(res.sourceLabel);
-    setDrafts(
-      res.payments.map((p, i) => ({
-        id: `p_${i}`,
-        store: p.store,
-        amount: p.amount,
-        paidAt: p.paidAt,
-        paidAtIso: p.paidAtIso,
-        method: p.method ?? "카드",
-        category: p.category ?? "etc",
-        initialCategory: p.category ?? "etc",
-        confidence: p.confidence ?? 0.8,
-        address: p.address,
-        include: true,
-        expanded: false,
-      }))
+    const nextDrafts = await Promise.all(
+      res.payments.map(async (p, i) => {
+        const recommendation = p.store
+          ? await getCategoryRecommendation(p.store).catch(() => null)
+          : null;
+        const recommendedCategoryId = recommendation?.autoApplicable
+          && categories.some((category) => category.categoryId === recommendation.categoryId)
+          ? recommendation.categoryId
+          : null;
+
+        return {
+          id: `p_${i}`,
+          store: p.store,
+          amount: p.amount,
+          paidAt: p.paidAt,
+          paidAtIso: p.paidAtIso,
+          method: p.method ?? "카드",
+          categoryId: recommendedCategoryId,
+          initialCategoryId: recommendedCategoryId,
+          confidence: p.confidence ?? 0,
+          currency: p.currency ?? "KRW",
+          address: p.address,
+          include: true,
+          expanded: false,
+        };
+      })
     );
+    setDrafts(nextDrafts);
     setStep("review");
   };
 
@@ -149,7 +162,7 @@ export default function CaptureScreen() {
         setStep("idle");
         Alert.alert(
           "결제 내역을 찾지 못했어요",
-          "OCR로 결제 알림 형태를 인식하지 못했습니다. 텍스트를 직접 붙여넣어 등록할 수 있어요.",
+          "카드 결제 알림을 인식하지 못했거나 승인된 결제가 아닙니다. 텍스트를 직접 붙여넣어 등록할 수 있어요.",
           [
             { text: "닫기", style: "cancel" },
             { text: "텍스트 붙여넣기", onPress: () => setPasteOpen(true) },
@@ -157,16 +170,10 @@ export default function CaptureScreen() {
         );
         return;
       }
-      applyOcrResult(res);
+      await applyOcrResult(res);
     } catch (e) {
       if (tickRef.current) clearInterval(tickRef.current);
       tickRef.current = null;
-      if (e instanceof CaptureOcrUnavailableError) {
-        Alert.alert("캡처 분석 준비 중", e.message, [
-          { text: "확인", onPress: reset },
-        ]);
-        return;
-      }
       const msg = (e as Error)?.message ?? "";
       if (msg.startsWith("AUTH_EXPIRED:")) {
         Alert.alert("인증 만료", msg.replace("AUTH_EXPIRED:", ""), [{ text: "확인", onPress: reset }]);
@@ -177,7 +184,7 @@ export default function CaptureScreen() {
     }
   };
 
-  const startFromPastedText = () => {
+  const startFromPastedText = async () => {
     const text = pasteText.trim();
     if (!text) {
       return Alert.alert("입력 필요", "결제 메시지 텍스트를 붙여넣어 주세요.");
@@ -191,7 +198,7 @@ export default function CaptureScreen() {
         "메시지에서 금액·가맹점을 인식하지 못했습니다. 다른 메시지를 시도해보세요."
       );
     }
-    applyOcrResult(res);
+    await applyOcrResult(res);
   };
 
   const pickFromLibrary = async () => {
@@ -226,6 +233,15 @@ export default function CaptureScreen() {
     if (selectedDrafts.length === 0) {
       return Alert.alert("선택 필요", "등록할 결제를 1건 이상 선택해주세요.");
     }
+    if (selectedDrafts.some((draft) => !draft.store.trim())) {
+      return Alert.alert("입력 확인", "가맹점명을 입력해주세요.");
+    }
+    if (selectedDrafts.some((draft) => draft.amount <= 0)) {
+      return Alert.alert("입력 확인", "금액을 올바르게 입력해주세요.");
+    }
+    if (selectedDrafts.some((draft) => !draft.categoryId)) {
+      return Alert.alert("입력 확인", "카테고리를 선택해주세요.");
+    }
     setStep("saving");
     try {
       await saveTransactions(
@@ -236,20 +252,25 @@ export default function CaptureScreen() {
           paidAt: d.paidAt,
           paidAtIso: d.paidAtIso,
           method: d.method,
-          category: d.category,
+          categoryId: d.categoryId,
+          currency: d.currency,
           address: d.address,
           imageUri,
           source,
-          userEditedCategory: d.category !== d.initialCategory,
-        }))
+          userEditedCategory: d.categoryId !== d.initialCategoryId,
+        })),
+        { requireServerSave: true }
       );
       Alert.alert(
         "등록 완료",
         `${selectedDrafts.length}건이 가계부에 추가되었어요.`,
         [{ text: "확인", onPress: () => router.back() }]
       );
-    } catch {
-      Alert.alert("저장 실패", "잠시 후 다시 시도해주세요.");
+    } catch (error) {
+      Alert.alert(
+        "저장 실패",
+        (error as Error)?.message ?? "잠시 후 다시 시도해주세요."
+      );
       setStep("review");
     }
   };
@@ -260,14 +281,13 @@ export default function CaptureScreen() {
         <EmptyState
           onPick={pickFromLibrary}
           onPasteText={() => setPasteOpen(true)}
-          ocrAvailable={ocrAvailable}
         />
         <PasteTextModal
           open={pasteOpen}
           value={pasteText}
           onChangeText={setPasteText}
           onClose={() => setPasteOpen(false)}
-          onConfirm={startFromPastedText}
+          onConfirm={() => void startFromPastedText()}
         />
       </>
     );
@@ -366,6 +386,7 @@ export default function CaptureScreen() {
                 onToggleExpand={() => toggleExpand(d.id)}
                 onChange={(patch) => updateDraft(d.id, patch)}
                 onRemove={() => removeDraft(d.id)}
+                categories={categories}
               />
             ))}
           </View>
@@ -418,16 +439,23 @@ function PaymentCard({
   onToggleExpand,
   onChange,
   onRemove,
+  categories,
 }: {
   draft: DraftPayment;
   onToggleInclude: () => void;
   onToggleExpand: () => void;
   onChange: (patch: Partial<DraftPayment>) => void;
   onRemove: () => void;
+  categories: CategoryApiItem[];
 }) {
-  const cat = getCategory(draft.category);
+  const selectedCategory = categories.find(
+    (category) => category.categoryId === draft.categoryId
+  );
+  const cat = getCategory(
+    nameToLocalCategoryId(selectedCategory?.name ?? "기타")
+  );
   const conf = Math.round(draft.confidence * 100);
-  const userEdited = draft.category !== draft.initialCategory;
+  const userEdited = draft.categoryId !== draft.initialCategoryId;
 
   return (
     <View
@@ -466,7 +494,7 @@ function PaymentCard({
             >
               <Ionicons name={cat.icon} size={11} color={cat.color} />
               <Text style={[styles.payTagText, { color: cat.color }]}>
-                {cat.label}
+                {selectedCategory?.name ?? cat.label}
               </Text>
               {userEdited && (
                 <Ionicons name="pencil" size={9} color={cat.color} />
@@ -565,33 +593,34 @@ function PaymentCard({
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={{ gap: 6 }}
             >
-              {CATEGORIES.map((c) => {
-                const active = draft.category === c.id;
-                const isAi = draft.initialCategory === c.id;
+              {categories.map((category) => {
+                const visual = getCategory(nameToLocalCategoryId(category.name));
+                const active = draft.categoryId === category.categoryId;
+                const isAi = draft.initialCategoryId === category.categoryId;
                 return (
                   <TouchableOpacity
-                    key={c.id}
-                    onPress={() => onChange({ category: c.id })}
+                    key={category.categoryId}
+                    onPress={() => onChange({ categoryId: category.categoryId })}
                     style={[
                       styles.catChip,
                       active && {
-                        backgroundColor: `${c.color}1A`,
-                        borderColor: c.color,
+                        backgroundColor: `${visual.color}1A`,
+                        borderColor: visual.color,
                       },
                     ]}
                   >
                     <Ionicons
-                      name={c.icon}
+                      name={visual.icon}
                       size={12}
-                      color={active ? c.color : "#6B7280"}
+                      color={active ? visual.color : "#6B7280"}
                     />
                     <Text
                       style={[
                         styles.catChipText,
-                        active && { color: c.color, fontWeight: "700" },
+                        active && { color: visual.color, fontWeight: "700" },
                       ]}
                     >
-                      {c.label}
+                      {category.name}
                     </Text>
                     {isAi && !active && <View style={styles.aiDot} />}
                   </TouchableOpacity>
@@ -612,11 +641,9 @@ function PaymentCard({
 function EmptyState({
   onPick,
   onPasteText,
-  ocrAvailable,
 }: {
   onPick: () => void;
   onPasteText: () => void;
-  ocrAvailable: boolean;
 }) {
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
@@ -629,17 +656,16 @@ function EmptyState({
       </View>
       <ScrollView contentContainerStyle={{ padding: 20 }}>
         <Text style={styles.emptyTitle}>
-          카톡 결제 알림 캡처를 자동 분석
+          카드 결제 알림 캡처를 자동 분석
         </Text>
         <Text style={styles.emptySub}>
-          신한·KB·삼성카드 같은 카드사 알림과 카카오페이·토스 알림을 OCR로 읽어
-          가맹점·금액·일시·결제수단을 한 번에 정리합니다. 한 캡처에 결제가 여러
-          건 있어도 자동으로 분리해드려요.
+          카드사 결제 알림 이미지를 AI로 분석해 가맹점·금액·결제 일시를
+          자동으로 입력합니다.
         </Text>
         <View style={styles.featureRow}>
           {[
-            { icon: "chatbubbles-outline", label: "카톡/문자" },
-            { icon: "documents-outline", label: "다건 분리" },
+            { icon: "card-outline", label: "카드 알림" },
+            { icon: "scan-outline", label: "이미지 분석" },
             { icon: "sparkles-outline", label: "AI 분류" },
           ].map((f) => (
             <View key={f.label} style={styles.featureItem}>
@@ -655,22 +681,16 @@ function EmptyState({
           <Text style={styles.bigPrimaryText}>앨범에서 선택</Text>
         </TouchableOpacity>
 
-        {/* 폴백 — 백엔드 OCR 미연결 상태에서도 텍스트로 등록 가능 */}
+        {/* 이미지 인식 실패 시 사용할 수 있는 텍스트 폴백 */}
         <TouchableOpacity style={styles.bigGhost} onPress={onPasteText}>
           <Ionicons name="document-text-outline" size={18} color="#6B7280" />
-          <Text style={styles.bigGhostText}>
-            {ocrAvailable
-              ? "메시지 텍스트로 등록 (사진 없이)"
-              : "메시지 텍스트 붙여넣기로 등록"}
-          </Text>
+          <Text style={styles.bigGhostText}>메시지 텍스트로 등록 (사진 없이)</Text>
         </TouchableOpacity>
 
         <View style={styles.tipBox}>
           <Ionicons name="information-circle-outline" size={16} color="#6B7280" />
           <Text style={styles.tipBoxText}>
-            {ocrAvailable
-              ? "긴 캡처는 결제 내역 부분만 잘라서 올리면 정확도가 올라가요."
-              : "서버가 아직 연결되지 않았어요. 그동안은 '메시지 텍스트 붙여넣기'로 실제 카톡 메시지를 분석해볼 수 있어요."}
+            결제 알림 부분만 보이도록 이미지를 잘라서 올리면 정확도가 올라가요.
           </Text>
         </View>
       </ScrollView>
