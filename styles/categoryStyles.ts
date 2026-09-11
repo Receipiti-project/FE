@@ -1,0 +1,24 @@
+import { StyleSheet } from "react-native";
+
+export const styles = StyleSheet.create({
+  safeArea: { flex: 1, backgroundColor: "#F9FAFB" },
+  header: { height: 56, flexDirection: "row", alignItems: "center", paddingHorizontal: 16, backgroundColor: "#FFFFFF", borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: "#E5E7EB" },
+  headerButton: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
+  headerTitle: { flex: 1, textAlign: "center", color: "#111827", fontSize: 18, fontWeight: "700" },
+  content: { padding: 20, paddingBottom: 40 },
+  sectionTitle: { marginTop: 12, marginBottom: 10, color: "#6B7280", fontSize: 13, fontWeight: "700" },
+  addRow: { flexDirection: "row", gap: 10, marginBottom: 18 },
+  input: { flex: 1, height: 48, paddingHorizontal: 14, borderWidth: 1, borderColor: "#D1D5DB", borderRadius: 12, backgroundColor: "#FFFFFF", color: "#111827" },
+  addButton: { width: 68, alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: "#3B82F6" },
+  addButtonText: { color: "#FFFFFF", fontWeight: "700" },
+  list: { overflow: "hidden", borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 16, backgroundColor: "#FFFFFF" },
+  row: { minHeight: 64, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: "#E5E7EB" },
+  categoryIcon: { width: 36, height: 36, alignItems: "center", justifyContent: "center", borderRadius: 10, backgroundColor: "#EFF6FF" },
+  categoryText: { flex: 1 },
+  categoryName: { color: "#111827", fontSize: 15, fontWeight: "700" },
+  categoryType: { marginTop: 3, color: "#9CA3AF", fontSize: 11 },
+  editInput: { flex: 1, height: 40, paddingHorizontal: 10, borderWidth: 1, borderColor: "#93C5FD", borderRadius: 9, color: "#111827" },
+  state: { alignItems: "center", paddingVertical: 36 },
+  errorText: { color: "#EF4444", textAlign: "center" },
+  retryText: { marginTop: 8, color: "#2563EB", fontWeight: "700" },
+});

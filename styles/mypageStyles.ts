@@ -68,6 +68,16 @@ export const styles = StyleSheet.create({
   },
   menuRowPressed: { backgroundColor: "#FEF2F2" },
   menuRowDisabled: { opacity: 0.55 },
+  logoutRow: { marginTop: 10 },
+  categoryIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#EFF6FF",
+  },
+  menuText: { flex: 1, color: "#111827", fontSize: 15, fontWeight: "700" },
   logoutIcon: {
     width: 34,
     height: 34,

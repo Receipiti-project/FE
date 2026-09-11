@@ -2,17 +2,13 @@ import { useEffect } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { initCategoryMapping } from "@/services/categoryMapping";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { CategoryProvider } from "@/contexts/CategoryContext";
 
 function RootNavigator() {
   const { ready, signedIn } = useAuth();
   const segments = useSegments();
   const router = useRouter();
-
-  useEffect(() => {
-    initCategoryMapping();
-  }, []);
 
   useEffect(() => {
     if (!ready) return;
@@ -44,6 +40,7 @@ function RootNavigator() {
         <Stack.Screen name="register/sms" options={{ headerShown: false }} />
         <Stack.Screen name="register/manual" options={{ headerShown: false }} />
         <Stack.Screen name="expenditure/[id]" options={{ headerShown: false }} />
+        <Stack.Screen name="categories" options={{ headerShown: false }} />
       </Stack>
       <StatusBar style="auto" />
     </>
@@ -53,7 +50,9 @@ function RootNavigator() {
 export default function RootLayout() {
   return (
     <AuthProvider>
-      <RootNavigator />
+      <CategoryProvider>
+        <RootNavigator />
+      </CategoryProvider>
     </AuthProvider>
   );
 }

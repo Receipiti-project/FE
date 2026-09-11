@@ -69,10 +69,22 @@ export default function MyPageScreen() {
             <Text style={styles.sectionTitle}>계정</Text>
             <Pressable
               accessibilityRole="button"
+              onPress={() => router.push("/categories")}
+              style={({ pressed }) => [styles.menuRow, pressed && styles.menuRowPressed]}
+            >
+              <View style={styles.categoryIcon}>
+                <Ionicons name="pricetags-outline" size={20} color="#3B82F6" />
+              </View>
+              <Text style={styles.menuText}>카테고리 관리</Text>
+              <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
               disabled={loggingOut}
               onPress={handleLogout}
               style={({ pressed }) => [
                 styles.menuRow,
+                styles.logoutRow,
                 pressed && styles.menuRowPressed,
                 loggingOut && styles.menuRowDisabled,
               ]}
