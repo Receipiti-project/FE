@@ -17,8 +17,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { styles } from "@/styles/register/receiptStyles";
 import {
-  CATEGORIES,
-  CategoryId,
   formatKRW,
   getCategory,
 } from "@/constants/mockData";
@@ -28,6 +26,9 @@ import {
   ReceiptOcrResult,
   saveTransaction,
 } from "@/services/ocr";
+import { useCategories } from "@/contexts/CategoryContext";
+import { nameToLocalCategoryId } from "@/services/categoryMapping";
+import { getCategoryRecommendation } from "@/services/api/categoryApi";
 
 const HITSLOP = { top: 12, bottom: 12, left: 12, right: 12 } as const;
 
@@ -51,8 +52,8 @@ type Draft = {
   purchasedAtIso?: string;
   totalAmount: number;
   paymentMethod: PaymentMethod;
-  category: CategoryId;
-  initialCategory: CategoryId;
+  categoryId: number | null;
+  initialCategoryId: number | null;
   categoryConfidence: number;
   memo: string;
   address?: string;
@@ -73,6 +74,7 @@ const ANALYSIS_STEPS = [
 ];
 
 export default function ReceiptScreen() {
+  const { categories } = useCategories();
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [step, setStep] = useState<Step>("idle");
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -96,16 +98,20 @@ export default function ReceiptScreen() {
     setAnalysisStep(0);
   };
 
-  const applyOcrResult = (res: ReceiptOcrResult) => {
+  const applyOcrResult = (
+    res: ReceiptOcrResult,
+    recommendedCategoryId: number | null,
+    categoryConfidence: number
+  ) => {
     setDraft({
       storeName: res.storeName,
       purchasedAt: res.purchasedAt,
       purchasedAtIso: res.purchasedAtIso,
       totalAmount: res.totalAmount,
       paymentMethod: res.paymentMethod,
-      category: res.suggestedCategory,
-      initialCategory: res.suggestedCategory,
-      categoryConfidence: res.categoryConfidence,
+      categoryId: recommendedCategoryId,
+      initialCategoryId: recommendedCategoryId,
+      categoryConfidence,
       memo: "",
       address: res.location?.address,
       isManualEntry: res.isManualEntry,
@@ -132,7 +138,18 @@ export default function ReceiptScreen() {
         tickRef.current = null;
       }
       setAnalysisStep(ANALYSIS_STEPS.length - 1);
-      applyOcrResult(res);
+      const recommendation = res.storeName
+        ? await getCategoryRecommendation(res.storeName).catch(() => null)
+        : null;
+      const recommendedCategoryId = recommendation?.autoApplicable
+        && categories.some((category) => category.categoryId === recommendation.categoryId)
+        ? recommendation.categoryId
+        : null;
+      applyOcrResult(
+        res,
+        recommendedCategoryId,
+        recommendedCategoryId ? (recommendation?.confidence ?? 0) : 0
+      );
     } catch (e) {
       if (tickRef.current) clearInterval(tickRef.current);
       tickRef.current = null;
@@ -168,6 +185,30 @@ export default function ReceiptScreen() {
   const updateDraft = (patch: Partial<Draft>) =>
     setDraft((prev) => (prev ? { ...prev, ...patch } : prev));
 
+  const reclassifyDraftStore = async () => {
+    const storeName = draft?.storeName.trim();
+    if (!storeName) return;
+
+    const recommendation = await getCategoryRecommendation(storeName).catch(() => null);
+    const recommendedCategoryId = recommendation?.autoApplicable
+      && categories.some((category) => category.categoryId === recommendation.categoryId)
+      ? recommendation.categoryId
+      : null;
+
+    setDraft((prev) => {
+      if (!prev) return prev;
+      const userEditedCategory = prev.categoryId !== prev.initialCategoryId;
+      return {
+        ...prev,
+        categoryId: userEditedCategory ? prev.categoryId : recommendedCategoryId,
+        initialCategoryId: userEditedCategory ? prev.initialCategoryId : recommendedCategoryId,
+        categoryConfidence: userEditedCategory
+          ? prev.categoryConfidence
+          : (recommendation?.confidence ?? 0),
+      };
+    });
+  };
+
   const onSave = async () => {
     if (!draft) return;
     if (!draft.storeName.trim()) {
@@ -176,6 +217,9 @@ export default function ReceiptScreen() {
     if (draft.totalAmount <= 0) {
       return Alert.alert("입력 확인", "총 결제금액이 0원 이상이어야 합니다.");
     }
+    if (!draft.categoryId) {
+      return Alert.alert("입력 확인", "카테고리를 선택해주세요.");
+    }
     setStep("saving");
     try {
       await saveTransaction(
@@ -183,7 +227,7 @@ export default function ReceiptScreen() {
         {
           ...draft,
           imageUri,
-          userEditedCategory: draft.category !== draft.initialCategory,
+          userEditedCategory: draft.categoryId !== draft.initialCategoryId,
         },
         { requireServerSave: true }
       );
@@ -284,6 +328,7 @@ export default function ReceiptScreen() {
                 style={styles.input}
                 value={draft?.storeName ?? ""}
                 onChangeText={(v) => updateDraft({ storeName: v })}
+                onEndEditing={() => void reclassifyDraftStore()}
                 placeholder="가맹점명을 입력하세요"
                 placeholderTextColor="#9CA3AF"
               />
@@ -366,33 +411,34 @@ export default function ReceiptScreen() {
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={{ gap: 8 }}
             >
-              {CATEGORIES.map((c) => {
-                const active = draft?.category === c.id;
-                const isAi = draft?.initialCategory === c.id;
+              {categories.map((category) => {
+                const visual = getCategory(nameToLocalCategoryId(category.name));
+                const active = draft?.categoryId === category.categoryId;
+                const isAi = draft?.initialCategoryId === category.categoryId;
                 return (
                   <TouchableOpacity
-                    key={c.id}
-                    onPress={() => updateDraft({ category: c.id })}
+                    key={category.categoryId}
+                    onPress={() => updateDraft({ categoryId: category.categoryId })}
                     style={[
                       styles.catChip,
                       active && {
-                        backgroundColor: `${c.color}1A`,
-                        borderColor: c.color,
+                        backgroundColor: `${visual.color}1A`,
+                        borderColor: visual.color,
                       },
                     ]}
                   >
                     <Ionicons
-                      name={c.icon}
+                      name={visual.icon}
                       size={14}
-                      color={active ? c.color : "#6B7280"}
+                      color={active ? visual.color : "#6B7280"}
                     />
                     <Text
                       style={[
                         styles.catChipText,
-                        active && { color: c.color, fontWeight: "700" },
+                        active && { color: visual.color, fontWeight: "700" },
                       ]}
                     >
-                      {c.label}
+                      {category.name}
                     </Text>
                     {isAi && !active && (
                       <View style={styles.aiDot} />
@@ -401,11 +447,11 @@ export default function ReceiptScreen() {
                 );
               })}
             </ScrollView>
-            {draft && draft.category !== draft.initialCategory && (
+            {draft && draft.categoryId !== draft.initialCategoryId && (
               <View style={styles.feedbackBox}>
                 <Ionicons name="bulb-outline" size={14} color="#7C3AED" />
                 <Text style={styles.feedbackText}>
-                  수정한 분류({getCategory(draft.category).label})를 기억하고
+                  수정한 분류({categories.find((category) => category.categoryId === draft.categoryId)?.name})를 기억하고
                   같은 매장에 자동 적용해요.
                 </Text>
               </View>

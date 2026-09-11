@@ -14,12 +14,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
-import {
-  CATEGORIES,
-  CategoryId,
-  formatKRW,
-  getCategory,
-} from "@/constants/mockData";
+import { formatKRW, getCategory } from "@/constants/mockData";
 import {
   getExpenditure,
   updateExpenditure,
@@ -27,11 +22,8 @@ import {
   ExpenditureDetail,
   datetimeLocalToIso,
 } from "@/services/api/expenditureApi";
-import {
-  getServerCategoryId,
-  getLocalCategoryId,
-  nameToLocalCategoryId,
-} from "@/services/categoryMapping";
+import { nameToLocalCategoryId } from "@/services/categoryMapping";
+import { useCategories } from "@/contexts/CategoryContext";
 
 const HITSLOP = { top: 12, bottom: 12, left: 12, right: 12 } as const;
 
@@ -39,7 +31,7 @@ type EditDraft = {
   storeName: string;
   amount: string;
   expenditureDate: string;
-  category: CategoryId;
+  categoryId: number;
   memo: string;
   currency: string;
 };
@@ -59,20 +51,8 @@ function isoToLocal(iso: string): string {
   }
 }
 
-function detailToCategory(detail: ExpenditureDetail): CategoryId {
-  // categoryName 문자열 매핑 우선 (목록 뷰와 일관성 유지)
-  if (detail.categoryName) {
-    const fromName = nameToLocalCategoryId(detail.categoryName);
-    if (fromName !== "etc") return fromName;
-  }
-  // fallback: 서버 categoryId → 로컬 ID
-  if (detail.categoryId) {
-    return getLocalCategoryId(detail.categoryId);
-  }
-  return "etc";
-}
-
 export default function ExpenditureDetailScreen() {
+  const { categories } = useCategories();
   const { id } = useLocalSearchParams<{ id: string }>();
   const expenditureId = Number(id);
 
@@ -105,7 +85,7 @@ export default function ExpenditureDetailScreen() {
       storeName: d.storeName ?? "",
       amount: String(d.amount ?? 0),
       expenditureDate: isoToLocal(d.expenditureDate),
-      category: detailToCategory(d),
+      categoryId: d.categoryId,
       memo: d.memo ?? "",
       currency: d.currency ?? "KRW",
     };
@@ -130,7 +110,7 @@ export default function ExpenditureDetailScreen() {
         storeName: draft.storeName.trim(),
         amount,
         expenditureDate: datetimeLocalToIso(draft.expenditureDate),
-        categoryId: getServerCategoryId(draft.category),
+        categoryId: draft.categoryId,
         memo: draft.memo,
         currency: draft.currency,
       });
@@ -183,7 +163,7 @@ export default function ExpenditureDetailScreen() {
     );
   }
 
-  const cat = getCategory(draft.category);
+  const cat = getCategory(nameToLocalCategoryId(detail.categoryName));
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
@@ -265,20 +245,21 @@ export default function ExpenditureDetailScreen() {
             <View style={styles.card}>
               <Text style={styles.cardLabel}>카테고리</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-                {CATEGORIES.map((c) => {
-                  const active = draft.category === c.id;
+                {categories.map((category) => {
+                  const visual = getCategory(nameToLocalCategoryId(category.name));
+                  const active = draft.categoryId === category.categoryId;
                   return (
                     <TouchableOpacity
-                      key={c.id}
-                      onPress={() => updateDraft({ category: c.id })}
+                      key={category.categoryId}
+                      onPress={() => updateDraft({ categoryId: category.categoryId })}
                       style={[
                         styles.catChip,
-                        active && { backgroundColor: `${c.color}1A`, borderColor: c.color },
+                        active && { backgroundColor: `${visual.color}1A`, borderColor: visual.color },
                       ]}
                     >
-                      <Ionicons name={c.icon} size={14} color={active ? c.color : "#6B7280"} />
-                      <Text style={[styles.catChipText, active && { color: c.color, fontWeight: "700" }]}>
-                        {c.label}
+                      <Ionicons name={visual.icon} size={14} color={active ? visual.color : "#6B7280"} />
+                      <Text style={[styles.catChipText, active && { color: visual.color, fontWeight: "700" }]}>
+                        {category.name}
                       </Text>
                     </TouchableOpacity>
                   );

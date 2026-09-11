@@ -14,16 +14,15 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { CATEGORIES, CategoryId, formatKRW } from "@/constants/mockData";
+import { formatKRW, getCategory } from "@/constants/mockData";
 import {
   createExpenditure,
-  guessCategoryFromStoreName,
   nowAsDatetimeLocal,
   datetimeLocalToIso,
 } from "@/services/api/expenditureApi";
-import { isApiConfigured } from "@/services/api/config";
-import { saveTransaction } from "@/services/ocr";
-import { getServerCategoryId } from "@/services/categoryMapping";
+import { getCategoryRecommendation } from "@/services/api/categoryApi";
+import { nameToLocalCategoryId } from "@/services/categoryMapping";
+import { useCategories } from "@/contexts/CategoryContext";
 
 const HITSLOP = { top: 12, bottom: 12, left: 12, right: 12 } as const;
 
@@ -34,7 +33,8 @@ type Form = {
   storeName: string;
   amount: string;
   expenditureDate: string; // "YYYY-MM-DDTHH:mm"
-  category: CategoryId;
+  categoryId: number | null;
+  userEditedCategory: boolean;
   memo: string;
   currency: Currency;
 };
@@ -43,23 +43,42 @@ const DEFAULT_FORM: Form = {
   storeName: "",
   amount: "",
   expenditureDate: nowAsDatetimeLocal(),
-  category: "etc",
+  categoryId: null,
+  userEditedCategory: false,
   memo: "",
   currency: "KRW",
 };
 
 export default function ManualScreen() {
+  const { categories } = useCategories();
   const [form, setForm] = useState<Form>(DEFAULT_FORM);
   const [saving, setSaving] = useState(false);
 
   const update = (patch: Partial<Form>) =>
     setForm((prev) => ({ ...prev, ...patch }));
 
+  const classifyStore = async () => {
+    const storeName = form.storeName.trim();
+    if (!storeName) return;
+
+    const recommendation = await getCategoryRecommendation(storeName).catch(() => null);
+    const recommendedCategoryId = recommendation?.autoApplicable
+      && categories.some((category) => category.categoryId === recommendation.categoryId)
+      ? recommendation.categoryId
+      : null;
+
+    setForm((prev) => ({
+      ...prev,
+      categoryId: prev.userEditedCategory ? prev.categoryId : recommendedCategoryId,
+    }));
+  };
+
   const validate = (): string | null => {
     if (!form.storeName.trim()) return "가맹점명을 입력해주세요.";
     const amt = parseInt(form.amount.replace(/[^0-9]/g, ""), 10);
     if (!amt || amt <= 0) return "금액을 올바르게 입력해주세요.";
     if (!form.expenditureDate) return "날짜를 입력해주세요.";
+    if (!form.categoryId) return "카테고리를 선택해주세요.";
     return null;
   };
 
@@ -71,26 +90,14 @@ export default function ManualScreen() {
     setSaving(true);
 
     try {
-      if (isApiConfigured()) {
-        await createExpenditure({
-          categoryId: getServerCategoryId(form.category),
-          storeName: form.storeName.trim(),
-          amount,
-          expenditureDate: datetimeLocalToIso(form.expenditureDate),
-          memo: form.memo.trim() || undefined,
-          currency: form.currency,
-        });
-      } else {
-        // API 미연결 시 로컬 임시 저장
-        await saveTransaction("manual", {
-          storeName: form.storeName.trim(),
-          totalAmount: amount,
-          purchasedAt: form.expenditureDate,
-          category: form.category,
-          memo: form.memo.trim(),
-          currency: form.currency,
-        });
-      }
+      await createExpenditure({
+        categoryId: form.categoryId!,
+        storeName: form.storeName.trim(),
+        amount,
+        expenditureDate: datetimeLocalToIso(form.expenditureDate),
+        memo: form.memo.trim() || undefined,
+        currency: form.currency,
+      });
 
       Alert.alert("등록 완료", "가계부에 추가되었어요.", [
         { text: "확인", onPress: () => router.back() },
@@ -133,16 +140,8 @@ export default function ManualScreen() {
             <TextInput
               style={styles.input}
               value={form.storeName}
-              onChangeText={(v) => {
-                const guessed = guessCategoryFromStoreName(v);
-                update({
-                  storeName: v,
-                  // 사용자가 카테고리를 etc(기본값)로 두고 있을 때만 자동 추천
-                  ...(form.category === "etc" && guessed !== "etc"
-                    ? { category: guessed }
-                    : {}),
-                });
-              }}
+              onChangeText={(storeName) => update({ storeName })}
+              onEndEditing={() => void classifyStore()}
               placeholder="가맹점명을 입력하세요"
               placeholderTextColor="#9CA3AF"
               returnKeyType="next"
@@ -214,32 +213,36 @@ export default function ManualScreen() {
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={{ gap: 8 }}
             >
-              {CATEGORIES.map((c) => {
-                const active = form.category === c.id;
+              {categories.map((category) => {
+                const visual = getCategory(nameToLocalCategoryId(category.name));
+                const active = form.categoryId === category.categoryId;
                 return (
                   <TouchableOpacity
-                    key={c.id}
-                    onPress={() => update({ category: c.id })}
+                    key={category.categoryId}
+                    onPress={() => update({
+                      categoryId: category.categoryId,
+                      userEditedCategory: true,
+                    })}
                     style={[
                       styles.catChip,
                       active && {
-                        backgroundColor: `${c.color}1A`,
-                        borderColor: c.color,
+                        backgroundColor: `${visual.color}1A`,
+                        borderColor: visual.color,
                       },
                     ]}
                   >
                     <Ionicons
-                      name={c.icon}
+                      name={visual.icon}
                       size={14}
-                      color={active ? c.color : "#6B7280"}
+                      color={active ? visual.color : "#6B7280"}
                     />
                     <Text
                       style={[
                         styles.catChipText,
-                        active && { color: c.color, fontWeight: "700" },
+                        active && { color: visual.color, fontWeight: "700" },
                       ]}
                     >
-                      {c.label}
+                      {category.name}
                     </Text>
                   </TouchableOpacity>
                 );
