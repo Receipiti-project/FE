@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -51,6 +51,17 @@ function isoToLocal(iso: string): string {
   }
 }
 
+function toEditDraft(detail: ExpenditureDetail): EditDraft {
+  return {
+    storeName: detail.storeName ?? "",
+    amount: String(detail.amount ?? 0),
+    expenditureDate: isoToLocal(detail.expenditureDate),
+    categoryId: detail.categoryId,
+    memo: detail.memo ?? "",
+    currency: detail.currency ?? "KRW",
+  };
+}
+
 export default function ExpenditureDetailScreen() {
   const { categories } = useCategories();
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -62,34 +73,23 @@ export default function ExpenditureDetailScreen() {
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState<EditDraft | null>(null);
 
-  useEffect(() => {
-    loadDetail();
-  }, []);
-
-  async function loadDetail() {
+  const loadDetail = useCallback(async () => {
     setLoading(true);
     try {
       const data = await getExpenditure(expenditureId);
       setDetail(data);
       setDraft(toEditDraft(data));
-    } catch (e) {
+    } catch {
       Alert.alert("오류", "지출 정보를 불러오지 못했어요.");
       router.back();
     } finally {
       setLoading(false);
     }
-  }
+  }, [expenditureId]);
 
-  function toEditDraft(d: ExpenditureDetail): EditDraft {
-    return {
-      storeName: d.storeName ?? "",
-      amount: String(d.amount ?? 0),
-      expenditureDate: isoToLocal(d.expenditureDate),
-      categoryId: d.categoryId,
-      memo: d.memo ?? "",
-      currency: d.currency ?? "KRW",
-    };
-  }
+  useEffect(() => {
+    void loadDetail();
+  }, [loadDetail]);
 
   function updateDraft(patch: Partial<EditDraft>) {
     setDraft((prev) => prev ? { ...prev, ...patch } : prev);
@@ -117,7 +117,7 @@ export default function ExpenditureDetailScreen() {
       Alert.alert("수정 완료", "지출 내역이 수정되었어요.", [
         { text: "확인", onPress: () => { setEditing(false); loadDetail(); } },
       ]);
-    } catch (e) {
+    } catch {
       Alert.alert("저장 실패", "잠시 후 다시 시도해주세요.");
     } finally {
       setSaving(false);
