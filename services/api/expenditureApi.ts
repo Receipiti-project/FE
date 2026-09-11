@@ -4,6 +4,7 @@ import {
   buildAuthHeaders,
   isApiConfigured,
 } from "@/services/api/config";
+import { prepareImageForUpload } from "@/services/imageUpload";
 
 /* ─── 응답/요청 타입 ─── */
 
@@ -116,17 +117,18 @@ async function postExpenditureImage<T>(
 ): Promise<T> {
   const url = apiUrl(path);
   const headers = buildAuthHeaders();
+  const upload = await prepareImageForUpload(uri).catch((error) => {
+    throw new Error(
+      `${label} 이미지 최적화 실패: ${(error as Error)?.message ?? "이미지를 처리할 수 없어요."}`
+    );
+  });
 
   const form = new FormData();
-  const raw = uri.split("?")[0];
-  const fileName = raw.substring(raw.lastIndexOf("/") + 1) || `upload_${Date.now()}.jpg`;
-  const ext = fileName.toLowerCase().split(".").pop() ?? "jpg";
-  const mime =
-    ext === "png" ? "image/png"
-    : ext === "heic" ? "image/heic"
-    : "image/jpeg";
-
-  form.append("file", { uri, name: fileName, type: mime } as unknown as Blob);
+  form.append("file", {
+    uri: upload.uri,
+    name: upload.fileName,
+    type: upload.mimeType,
+  } as unknown as Blob);
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), API_OCR_TIMEOUT_MS);
@@ -158,6 +160,11 @@ async function postExpenditureImage<T>(
   if (!res.ok) {
     if (res.status === 401 || res.status === 403) {
       throw new Error(`AUTH_EXPIRED:토큰이 만료됐어요. .env의 토큰을 갱신하고 앱을 재시작해주세요. (HTTP ${res.status})`);
+    }
+    if (res.status === 413) {
+      throw new Error(
+        `${label} 이미지 용량이 서버 제한을 초과했어요. 이미지를 잘라서 다시 시도해주세요.`
+      );
     }
     throw new Error(`${label} 서버 오류 (HTTP ${res.status})`);
   }
