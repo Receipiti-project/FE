@@ -40,6 +40,10 @@ export type ExpenditureListItem = {
   expenditureId: number;
   categoryName: string;
   storeName: string;
+  placeId?: string;
+  address?: string;
+  latitude?: number;
+  longitude?: number;
   amount: number;
   expenditureDate: string; // ISO 8601
   memo?: string;
@@ -59,12 +63,42 @@ export type MonthlyExpenditureResponse = {
   dailyExpenditures: DailyExpenditure[];
 };
 
+/* ─── GET /api/v1/expenditures/routes (일별 소비 동선) 타입 ─── */
+
+/** 동선 위의 방문 장소 */
+export type ConsumptionRoutePlace = {
+  sequence: number;
+  expenditureId: number;
+  placeId?: string;
+  storeName: string;
+  address?: string;
+  latitude: number;
+  longitude: number;
+  categoryName: string;
+  amount: number;
+  visitedAt: string; // ISO 8601
+};
+
+/** GET /api/v1/expenditures/routes 응답 전체 */
+export type ConsumptionRouteResponse = {
+  date: string; // "YYYY-MM-DD"
+  visitedPlaceCount: number;
+  unmappedExpenditureCount: number;
+  totalExpenditure: number;
+  estimatedDistanceMeters: number;
+  places: ConsumptionRoutePlace[];
+};
+
 /* ─── POST /api/v1/expenditures 타입 ─── */
 
 /** POST /api/v1/expenditures 요청 */
 export type CreateExpenditureDto = {
   categoryId: number;
   storeName: string;
+  placeId?: string;
+  address?: string;
+  latitude?: number;
+  longitude?: number;
   amount: number;
   expenditureDate: string; // ISO 8601
   memo?: string;
@@ -101,6 +135,10 @@ export type ExpenditureDetail = {
 export type UpdateExpenditureDto = {
   categoryId?: number;
   storeName?: string;
+  placeId?: string;
+  address?: string;
+  latitude?: number;
+  longitude?: number;
   amount?: number;
   expenditureDate?: string;
   memo?: string;
@@ -398,6 +436,29 @@ export async function getMonthlyExpenditures(
   }
 
   return res.json() as Promise<MonthlyExpenditureResponse>;
+}
+
+/**
+ * GET /api/v1/expenditures/routes?date=YYYY-MM-DD
+ * 특정 날짜의 소비 동선 조회
+ */
+export async function getConsumptionRoute(
+  date: string
+): Promise<ConsumptionRouteResponse> {
+  if (!isApiConfigured()) {
+    throw new Error("API_BASE_URL 이 설정되지 않았습니다.");
+  }
+
+  const url = apiUrl(`/api/v1/expenditures/routes?date=${date}`);
+  const headers = buildAuthHeaders();
+
+  const res = await fetch(url, { headers });
+
+  if (!res.ok) {
+    throw new Error(`소비 동선 조회 실패 (HTTP ${res.status})`);
+  }
+
+  return res.json() as Promise<ConsumptionRouteResponse>;
 }
 
 /** 가맹점명 기반 카테고리 추측 — 서버 6개 카테고리 기준 */
