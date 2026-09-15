@@ -160,7 +160,9 @@ export default function PlacePicker({
       visible={visible}
       animationType="slide"
       transparent
-      onRequestClose={onClose}
+      onRequestClose={() => {
+        if (!busy) onClose();
+      }}
     >
       <KeyboardAvoidingView
         style={styles.backdrop}
@@ -169,7 +171,7 @@ export default function PlacePicker({
         <View style={styles.sheet}>
           <View style={styles.header}>
             <Text style={styles.title}>위치 선택</Text>
-            <TouchableOpacity onPress={onClose} hitSlop={12}>
+            <TouchableOpacity onPress={onClose} hitSlop={12} disabled={busy}>
               <Ionicons name="close" size={22} color="#6B7280" />
             </TouchableOpacity>
           </View>
