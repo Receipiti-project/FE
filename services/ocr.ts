@@ -70,7 +70,7 @@ export async function parseReceipt(uri: string): Promise<ReceiptOcrResult> {
 function captureSource(cardCompany?: string): CaptureSource {
   if (!cardCompany) return "push";
   if (/카카오|kakao/i.test(cardCompany)) return "kakao";
-  return "push";
+  return "sms";
 }
 
 function captureDate(value?: string): { paidAt?: string; paidAtIso?: string } {
@@ -109,6 +109,9 @@ export async function parseCapture(uri: string): Promise<CaptureOcrResult> {
   }
 
   const analysis = await analyzeCardNotification(uri);
+  if (typeof analysis.paymentNotification !== "boolean") {
+    throw new Error("카드 결제 이미지 분석 서버 응답 형식이 올바르지 않아요.");
+  }
   const rejected = /취소|거절|실패|cancel|declin|reject|fail/i.test(
     analysis.approvalStatus ?? ""
   );

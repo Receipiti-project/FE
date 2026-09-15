@@ -27,6 +27,11 @@ export type CardNotificationAnalysisResponse = {
   confidence?: number;
 };
 
+type ApiErrorBody = {
+  message?: string;
+  error?: string;
+};
+
 /* ─── GET /api/v1/expenditures (월별 목록) 타입 ─── */
 
 /** 지출 목록 항목 */
@@ -166,7 +171,19 @@ async function postExpenditureImage<T>(
         `${label} 이미지 용량이 서버 제한을 초과했어요. 이미지를 잘라서 다시 시도해주세요.`
       );
     }
-    throw new Error(`${label} 서버 오류 (HTTP ${res.status})`);
+    const raw = await res.text().catch(() => "");
+    let serverMessage = "";
+    if (raw) {
+      try {
+        const body = JSON.parse(raw) as ApiErrorBody;
+        serverMessage = body.message?.trim() || body.error?.trim() || "";
+      } catch {
+        serverMessage = raw.trim();
+      }
+    }
+    throw new Error(
+      `${label} 실패 (HTTP ${res.status})${serverMessage ? `: ${serverMessage}` : ""}`
+    );
   }
 
   const contentType = res.headers.get("content-type") ?? "";
@@ -176,7 +193,9 @@ async function postExpenditureImage<T>(
     );
   }
 
-  const json = await res.json();
+  const json = await res.json().catch(() => {
+    throw new Error(`${label} 서버 응답을 해석할 수 없어요.`);
+  });
 
   // 서버가 HTTP 200이지만 status:-404 같은 오류 응답을 보낼 때
   if (json && typeof json.status === "number" && json.status < 0) {
