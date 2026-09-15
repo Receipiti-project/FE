@@ -6,6 +6,7 @@ module.exports = () => ({
   ...appJson.expo,
   plugins: [
     ...(appJson.expo.plugins ?? []),
+    ...(allowHttpApi ? ['./plugins/withHttpApiTraffic'] : []),
     'expo-secure-store',
   ],
   android: {
