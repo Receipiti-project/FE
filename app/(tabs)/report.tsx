@@ -208,7 +208,7 @@ export default function ReportScreen() {
               <Text style={styles.emptyText}>지출 내역이 없어요</Text>
             ) : (
               chartCategory.map((c) => {
-                const cat = getCategory(c.id);
+                const cat = getCategory(c.id, c.name);
                 const ratio = c.total / maxCat;
                 const pct = displayTotal > 0 ? Math.round((c.total / displayTotal) * 100) : 0;
                 return (

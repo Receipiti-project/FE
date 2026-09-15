@@ -14,7 +14,6 @@ import {
   ACTIVITY_ZONES,
   AI_INSIGHTS,
   AI_SUGGESTED_QUESTIONS,
-  CATEGORIES,
   CATEGORIZATION_STATS,
   MONTHLY_BUDGET,
   formatKRW,
@@ -50,6 +49,7 @@ export default function HomeScreen() {
     todayTotal,
     todayCount,
     recentItems,
+    byCategoryReport,
     refetch,
   } = useExpenditures(4);
 
@@ -205,7 +205,7 @@ export default function HomeScreen() {
           ) : (
             <View style={styles.txList}>
               {recentItems.map((t, idx) => {
-                const cat = getCategory(t.category);
+                const cat = getCategory(t.category, t.categoryName);
                 const isLast = idx === recentItems.length - 1;
                 return (
                   <View
@@ -285,14 +285,17 @@ export default function HomeScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>카테고리 한눈에</Text>
           <View style={styles.catGrid}>
-            {CATEGORIES.slice(0, 6).map((c) => (
-              <View key={c.id} style={styles.catChip}>
-                <View style={[styles.catChipIcon, { backgroundColor: `${c.color}1A` }]}>
-                  <Ionicons name={c.icon} size={16} color={c.color} />
+            {byCategoryReport.slice(0, 6).map((category) => {
+              const visual = getCategory(category.id, category.name);
+              return (
+              <View key={category.id} style={styles.catChip}>
+                <View style={[styles.catChipIcon, { backgroundColor: `${visual.color}1A` }]}>
+                  <Ionicons name={visual.icon} size={16} color={visual.color} />
                 </View>
-                <Text style={styles.catChipLabel}>{c.label}</Text>
+                <Text style={styles.catChipLabel}>{category.name}</Text>
               </View>
-            ))}
+              );
+            })}
           </View>
         </View>
 

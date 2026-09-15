@@ -13,13 +13,13 @@ export type CategoryId =
   | "etc";
 
 export type Category = {
-  id: CategoryId;
+  id: string;
   label: string;
   color: string;
   icon: IoniconName;
 };
 
-export const CATEGORIES: Category[] = [
+export const CATEGORIES: (Category & { id: CategoryId })[] = [
   { id: "food",      label: "식비",      color: "#F97316", icon: "restaurant-outline" },
   { id: "transport", label: "교통",      color: "#3B82F6", icon: "bus-outline" },
   { id: "shopping",  label: "쇼핑",      color: "#EC4899", icon: "bag-handle-outline" },
@@ -28,8 +28,47 @@ export const CATEGORIES: Category[] = [
   { id: "etc",       label: "기타",      color: "#6B7280", icon: "ellipsis-horizontal" },
 ];
 
-export const getCategory = (id: CategoryId): Category =>
-  CATEGORIES.find((c) => c.id === id) ?? CATEGORIES[CATEGORIES.length - 1];
+const CUSTOM_CATEGORY_COLORS = [
+  "#8B5CF6",
+  "#06B6D4",
+  "#84CC16",
+  "#F59E0B",
+  "#6366F1",
+  "#14B8A6",
+];
+
+function customCategoryVisual(id: string, label: string): Category {
+  const hash = [...label].reduce((sum, char) => sum + (char.codePointAt(0) ?? 0), 0);
+  return {
+    id,
+    label,
+    color: CUSTOM_CATEGORY_COLORS[hash % CUSTOM_CATEGORY_COLORS.length],
+    icon: "pricetag-outline",
+  };
+}
+
+export const getCategory = (id: string, label?: string): Category => {
+  const builtIn = CATEGORIES.find((category) => category.id === id);
+  if (builtIn) return builtIn;
+  const customLabel = label?.trim() || id.replace(/^custom:/, "") || "미분류";
+  return customCategoryVisual(id, customLabel);
+};
+
+export function getCategoryByName(name: string): Category {
+  const n = name.trim();
+  const aliases: Record<string, CategoryId> = {
+    "식비": "food", food: "food",
+    "교통": "transport", transport: "transport",
+    "쇼핑": "shopping", shopping: "shopping",
+    "문화/여가": "culture", "문화": "culture", "여가": "culture", culture: "culture",
+    "건강/의료": "health", "건강": "health", "의료": "health", health: "health",
+    "기타": "etc", etc: "etc",
+  };
+  const builtInId = aliases[n] ?? aliases[n.toLocaleLowerCase("ko-KR")];
+  return builtInId
+    ? getCategory(builtInId)
+    : customCategoryVisual(`custom:${n.toLocaleLowerCase("ko-KR")}`, n || "미분류");
+}
 
 export type Transaction = {
   id: string;
