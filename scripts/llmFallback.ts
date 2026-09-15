@@ -101,7 +101,7 @@ export function mergeParsed(
     amount:      regex.amount      ?? llm.amount,
     storeName:   regex.storeName   ?? llm.storeName,
     paymentDate: regex.paymentDate ?? llm.paymentDate,
-    category:    regex.category    ?? llm.category,
+    category:    llm.category      ?? regex.category,
     memo:        regex.memo        ?? llm.memo,
     inputType:   regex.inputType,
     currency:    regex.currency,
