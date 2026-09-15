@@ -19,6 +19,14 @@ export type CategoryRecommendation = {
   reason: "SAME_STORE" | "SAME_BRAND" | "SAME_BUSINESS_CATEGORY";
 };
 
+export type CategoryRecommendationDecision = {
+  recommendedCategoryId: number | null;
+  selectedCategoryId: number | null;
+  confidence: number;
+  matchedCount: number;
+  autoApplicable: boolean;
+};
+
 /** 서버가 추천한 카테고리가 현재 사용자의 카테고리 목록에 있으면 선택합니다. */
 export function resolveRecommendedCategoryId(
   recommendation: CategoryRecommendation | null,
@@ -30,6 +38,36 @@ export function resolveRecommendedCategoryId(
   )
     ? recommendation.categoryId
     : null;
+}
+
+/**
+ * 추천은 한 번의 이력만 있어도 노출하되, 3회 이상 선택되고 신뢰도가
+ * 75% 이상인 추천만 사용자 확인 없이 선택 상태로 만듭니다.
+ */
+export function resolveCategoryRecommendation(
+  recommendation: CategoryRecommendation | null,
+  categories: CategoryApiItem[]
+): CategoryRecommendationDecision {
+  const recommendedCategoryId = resolveRecommendedCategoryId(
+    recommendation,
+    categories
+  );
+  const confidence = recommendation?.confidence ?? 0;
+  const matchedCount = recommendation?.matchedCount ?? 0;
+  const autoApplicable = Boolean(
+    recommendedCategoryId &&
+      recommendation?.autoApplicable &&
+      matchedCount >= 3 &&
+      confidence >= 0.75
+  );
+
+  return {
+    recommendedCategoryId,
+    selectedCategoryId: autoApplicable ? recommendedCategoryId : null,
+    confidence,
+    matchedCount,
+    autoApplicable,
+  };
 }
 
 async function errorMessage(response: Response, fallback: string): Promise<string> {

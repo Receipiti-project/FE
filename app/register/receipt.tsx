@@ -18,7 +18,6 @@ import { router } from "expo-router";
 import { styles } from "@/styles/register/receiptStyles";
 import {
   formatKRW,
-  getCategory,
 } from "@/constants/mockData";
 import {
   parseReceipt,
@@ -27,10 +26,10 @@ import {
   saveTransaction,
 } from "@/services/ocr";
 import { useCategories } from "@/contexts/CategoryContext";
-import { nameToLocalCategoryId } from "@/services/categoryMapping";
+import { CategoryPicker } from "@/components/category-picker";
 import {
   getCategoryRecommendation,
-  resolveRecommendedCategoryId,
+  resolveCategoryRecommendation,
 } from "@/services/api/categoryApi";
 
 const HITSLOP = { top: 12, bottom: 12, left: 12, right: 12 } as const;
@@ -58,6 +57,9 @@ type Draft = {
   categoryId: number | null;
   initialCategoryId: number | null;
   categoryConfidence: number;
+  categoryMatchedCount: number;
+  categoryAutoApplied: boolean;
+  userSelectedCategory: boolean;
   memo: string;
   address?: string;
   isManualEntry?: boolean;
@@ -103,8 +105,7 @@ export default function ReceiptScreen() {
 
   const applyOcrResult = (
     res: ReceiptOcrResult,
-    recommendedCategoryId: number | null,
-    categoryConfidence: number
+    recommendation: ReturnType<typeof resolveCategoryRecommendation>
   ) => {
     setDraft({
       storeName: res.storeName,
@@ -112,9 +113,12 @@ export default function ReceiptScreen() {
       purchasedAtIso: res.purchasedAtIso,
       totalAmount: res.totalAmount,
       paymentMethod: res.paymentMethod,
-      categoryId: recommendedCategoryId,
-      initialCategoryId: recommendedCategoryId,
-      categoryConfidence,
+      categoryId: recommendation.selectedCategoryId,
+      initialCategoryId: recommendation.recommendedCategoryId,
+      categoryConfidence: recommendation.confidence,
+      categoryMatchedCount: recommendation.matchedCount,
+      categoryAutoApplied: recommendation.autoApplicable,
+      userSelectedCategory: false,
       memo: "",
       address: res.location?.address,
       isManualEntry: res.isManualEntry,
@@ -144,15 +148,11 @@ export default function ReceiptScreen() {
       const recommendation = res.storeName
         ? await getCategoryRecommendation(res.storeName).catch(() => null)
         : null;
-      const recommendedCategoryId = resolveRecommendedCategoryId(
+      const decision = resolveCategoryRecommendation(
         recommendation,
         categories
       );
-      applyOcrResult(
-        res,
-        recommendedCategoryId,
-        recommendedCategoryId ? (recommendation?.confidence ?? 0) : 0
-      );
+      applyOcrResult(res, decision);
     } catch (e) {
       if (tickRef.current) clearInterval(tickRef.current);
       tickRef.current = null;
@@ -193,21 +193,27 @@ export default function ReceiptScreen() {
     if (!storeName) return;
 
     const recommendation = await getCategoryRecommendation(storeName).catch(() => null);
-    const recommendedCategoryId = resolveRecommendedCategoryId(
+    const decision = resolveCategoryRecommendation(
       recommendation,
       categories
     );
 
     setDraft((prev) => {
       if (!prev) return prev;
-      const userEditedCategory = prev.categoryId !== prev.initialCategoryId;
+      const userEditedCategory = prev.userSelectedCategory;
       return {
         ...prev,
-        categoryId: userEditedCategory ? prev.categoryId : recommendedCategoryId,
-        initialCategoryId: userEditedCategory ? prev.initialCategoryId : recommendedCategoryId,
+        categoryId: userEditedCategory ? prev.categoryId : decision.selectedCategoryId,
+        initialCategoryId: decision.recommendedCategoryId,
         categoryConfidence: userEditedCategory
           ? prev.categoryConfidence
-          : (recommendation?.confidence ?? 0),
+          : decision.confidence,
+        categoryMatchedCount: userEditedCategory
+          ? prev.categoryMatchedCount
+          : decision.matchedCount,
+        categoryAutoApplied: userEditedCategory
+          ? false
+          : decision.autoApplicable,
       };
     });
   };
@@ -229,8 +235,9 @@ export default function ReceiptScreen() {
         "receipt",
         {
           ...draft,
+          categoryId: draft.userSelectedCategory ? draft.categoryId : undefined,
           imageUri,
-          userEditedCategory: draft.categoryId !== draft.initialCategoryId,
+          userEditedCategory: draft.userSelectedCategory,
         },
         { requireServerSave: true }
       );
@@ -409,48 +416,23 @@ export default function ReceiptScreen() {
                 </View>
               )}
             </View>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ gap: 8 }}
-            >
-              {categories.map((category) => {
-                const visual = getCategory(nameToLocalCategoryId(category.name));
-                const active = draft?.categoryId === category.categoryId;
-                const isAi = draft?.initialCategoryId === category.categoryId;
-                return (
-                  <TouchableOpacity
-                    key={category.categoryId}
-                    onPress={() => updateDraft({ categoryId: category.categoryId })}
-                    style={[
-                      styles.catChip,
-                      active && {
-                        backgroundColor: `${visual.color}1A`,
-                        borderColor: visual.color,
-                      },
-                    ]}
-                  >
-                    <Ionicons
-                      name={visual.icon}
-                      size={14}
-                      color={active ? visual.color : "#6B7280"}
-                    />
-                    <Text
-                      style={[
-                        styles.catChipText,
-                        active && { color: visual.color, fontWeight: "700" },
-                      ]}
-                    >
-                      {category.name}
-                    </Text>
-                    {isAi && !active && (
-                      <View style={styles.aiDot} />
-                    )}
-                  </TouchableOpacity>
-                );
+            <CategoryPicker
+              selectedId={draft?.categoryId ?? null}
+              recommendedCategoryId={draft?.initialCategoryId}
+              onSelect={(categoryId) => updateDraft({
+                categoryId,
+                categoryAutoApplied: false,
+                userSelectedCategory: true,
               })}
-            </ScrollView>
-            {draft && draft.categoryId !== draft.initialCategoryId && (
+            />
+            {draft?.initialCategoryId && !draft.userSelectedCategory && (
+              <Text style={styles.inputHint}>
+                {draft.categoryAutoApplied
+                  ? `선택 이력 ${draft.categoryMatchedCount}회 · 자동 적용`
+                  : `선택 이력 ${draft.categoryMatchedCount}회 · 추천 카테고리를 확인해 주세요.`}
+              </Text>
+            )}
+            {draft?.userSelectedCategory && draft.categoryId !== draft.initialCategoryId && (
               <View style={styles.feedbackBox}>
                 <Ionicons name="bulb-outline" size={14} color="#7C3AED" />
                 <Text style={styles.feedbackText}>

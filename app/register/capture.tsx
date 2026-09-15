@@ -19,7 +19,7 @@ import { router } from "expo-router";
 import { styles } from "@/styles/register/captureStyles";
 import {
   formatKRW,
-  getCategory,
+  getCategoryByName,
 } from "@/constants/mockData";
 import {
   CaptureOcrResult,
@@ -33,9 +33,9 @@ import { useCategories } from "@/contexts/CategoryContext";
 import {
   CategoryApiItem,
   getCategoryRecommendation,
-  resolveRecommendedCategoryId,
+  resolveCategoryRecommendation,
 } from "@/services/api/categoryApi";
-import { nameToLocalCategoryId } from "@/services/categoryMapping";
+import { CategoryPicker } from "@/components/category-picker";
 
 const HITSLOP = { top: 12, bottom: 12, left: 12, right: 12 } as const;
 
@@ -51,6 +51,10 @@ type DraftPayment = {
   categoryId: number | null;
   initialCategoryId: number | null;
   confidence: number;
+  categoryConfidence: number;
+  categoryMatchedCount: number;
+  categoryAutoApplied: boolean;
+  userSelectedCategory: boolean;
   currency: string;
   address?: string;
   include: boolean;
@@ -117,7 +121,7 @@ export default function CaptureScreen() {
         const recommendation = p.store
           ? await getCategoryRecommendation(p.store).catch(() => null)
           : null;
-        const recommendedCategoryId = resolveRecommendedCategoryId(
+        const decision = resolveCategoryRecommendation(
           recommendation,
           categories
         );
@@ -129,9 +133,13 @@ export default function CaptureScreen() {
           paidAt: p.paidAt,
           paidAtIso: p.paidAtIso,
           method: p.method ?? "카드",
-          categoryId: recommendedCategoryId,
-          initialCategoryId: recommendedCategoryId,
+          categoryId: decision.selectedCategoryId,
+          initialCategoryId: decision.recommendedCategoryId,
           confidence: p.confidence ?? 0,
+          categoryConfidence: decision.confidence,
+          categoryMatchedCount: decision.matchedCount,
+          categoryAutoApplied: decision.autoApplicable,
+          userSelectedCategory: false,
           currency: p.currency ?? "KRW",
           address: p.address,
           include: true,
@@ -256,12 +264,12 @@ export default function CaptureScreen() {
           paidAt: d.paidAt,
           paidAtIso: d.paidAtIso,
           method: d.method,
-          categoryId: d.categoryId,
+          categoryId: d.userSelectedCategory ? d.categoryId : undefined,
           currency: d.currency,
           address: d.address,
           imageUri,
           source,
-          userEditedCategory: d.categoryId !== d.initialCategoryId,
+          userEditedCategory: d.userSelectedCategory,
         })),
         { requireServerSave: true }
       );
@@ -455,11 +463,9 @@ function PaymentCard({
   const selectedCategory = categories.find(
     (category) => category.categoryId === draft.categoryId
   );
-  const cat = getCategory(
-    nameToLocalCategoryId(selectedCategory?.name ?? "기타")
-  );
+  const cat = getCategoryByName(selectedCategory?.name ?? "미분류");
   const conf = Math.round(draft.confidence * 100);
-  const userEdited = draft.categoryId !== draft.initialCategoryId;
+  const userEdited = draft.userSelectedCategory;
 
   return (
     <View
@@ -521,7 +527,7 @@ function PaymentCard({
                   { color: conf >= 90 ? "#059669" : "#D97706" },
                 ]}
               >
-                신뢰도 {conf}%
+                분석 신뢰도 {conf}%
               </Text>
             </View>
             {draft.paidAt && (
@@ -592,45 +598,23 @@ function PaymentCard({
           </View>
           <View>
             <Text style={styles.fieldLabel}>카테고리</Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ gap: 6 }}
-            >
-              {categories.map((category) => {
-                const visual = getCategory(nameToLocalCategoryId(category.name));
-                const active = draft.categoryId === category.categoryId;
-                const isAi = draft.initialCategoryId === category.categoryId;
-                return (
-                  <TouchableOpacity
-                    key={category.categoryId}
-                    onPress={() => onChange({ categoryId: category.categoryId })}
-                    style={[
-                      styles.catChip,
-                      active && {
-                        backgroundColor: `${visual.color}1A`,
-                        borderColor: visual.color,
-                      },
-                    ]}
-                  >
-                    <Ionicons
-                      name={visual.icon}
-                      size={12}
-                      color={active ? visual.color : "#6B7280"}
-                    />
-                    <Text
-                      style={[
-                        styles.catChipText,
-                        active && { color: visual.color, fontWeight: "700" },
-                      ]}
-                    >
-                      {category.name}
-                    </Text>
-                    {isAi && !active && <View style={styles.aiDot} />}
-                  </TouchableOpacity>
-                );
+            <CategoryPicker
+              selectedId={draft.categoryId}
+              recommendedCategoryId={draft.initialCategoryId}
+              onSelect={(categoryId) => onChange({
+                categoryId,
+                categoryAutoApplied: false,
+                userSelectedCategory: true,
               })}
-            </ScrollView>
+              compact
+            />
+            {draft.initialCategoryId && !draft.userSelectedCategory && (
+              <Text style={styles.inputHint}>
+                {draft.categoryAutoApplied
+                  ? `선택 이력 ${draft.categoryMatchedCount}회 · 신뢰도 ${Math.round(draft.categoryConfidence * 100)}%로 자동 적용`
+                  : `선택 이력 ${draft.categoryMatchedCount}회 · 추천 신뢰도 ${Math.round(draft.categoryConfidence * 100)}% · 카테고리를 확인해 주세요.`}
+              </Text>
+            )}
           </View>
           <TouchableOpacity onPress={onRemove} style={styles.removeRow}>
             <Ionicons name="trash-outline" size={14} color="#EF4444" />

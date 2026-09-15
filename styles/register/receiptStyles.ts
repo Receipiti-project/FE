@@ -326,4 +326,11 @@ export const styles = StyleSheet.create({
   },
   warnText: { color: "#B45309", fontSize: 11, lineHeight: 16, flex: 1 },
 
+  inputHint: {
+    marginTop: 2,
+    color: "#6B7280",
+    fontSize: 11,
+    lineHeight: 16,
+  },
+
 });

@@ -14,7 +14,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { formatKRW, getCategory } from "@/constants/mockData";
+import { formatKRW } from "@/constants/mockData";
 import {
   createExpenditure,
   nowAsDatetimeLocal,
@@ -22,10 +22,10 @@ import {
 } from "@/services/api/expenditureApi";
 import {
   getCategoryRecommendation,
-  resolveRecommendedCategoryId,
+  resolveCategoryRecommendation,
 } from "@/services/api/categoryApi";
-import { nameToLocalCategoryId } from "@/services/categoryMapping";
 import { useCategories } from "@/contexts/CategoryContext";
+import { CategoryPicker } from "@/components/category-picker";
 
 const HITSLOP = { top: 12, bottom: 12, left: 12, right: 12 } as const;
 
@@ -37,6 +37,10 @@ type Form = {
   amount: string;
   expenditureDate: string; // "YYYY-MM-DDTHH:mm"
   categoryId: number | null;
+  recommendedCategoryId: number | null;
+  categoryConfidence: number;
+  matchedCount: number;
+  categoryAutoApplied: boolean;
   userEditedCategory: boolean;
   memo: string;
   currency: Currency;
@@ -47,6 +51,10 @@ const DEFAULT_FORM: Form = {
   amount: "",
   expenditureDate: nowAsDatetimeLocal(),
   categoryId: null,
+  recommendedCategoryId: null,
+  categoryConfidence: 0,
+  matchedCount: 0,
+  categoryAutoApplied: false,
   userEditedCategory: false,
   memo: "",
   currency: "KRW",
@@ -65,14 +73,20 @@ export default function ManualScreen() {
     if (!storeName) return;
 
     const recommendation = await getCategoryRecommendation(storeName).catch(() => null);
-    const recommendedCategoryId = resolveRecommendedCategoryId(
+    const decision = resolveCategoryRecommendation(
       recommendation,
       categories
     );
 
     setForm((prev) => ({
       ...prev,
-      categoryId: prev.userEditedCategory ? prev.categoryId : recommendedCategoryId,
+      categoryId: prev.userEditedCategory
+        ? prev.categoryId
+        : decision.selectedCategoryId,
+      recommendedCategoryId: decision.recommendedCategoryId,
+      categoryConfidence: decision.confidence,
+      matchedCount: decision.matchedCount,
+      categoryAutoApplied: decision.autoApplicable,
     }));
   };
 
@@ -94,7 +108,7 @@ export default function ManualScreen() {
 
     try {
       await createExpenditure({
-        categoryId: form.categoryId!,
+        categoryId: form.userEditedCategory ? form.categoryId! : undefined,
         storeName: form.storeName.trim(),
         amount,
         expenditureDate: datetimeLocalToIso(form.expenditureDate),
@@ -211,46 +225,22 @@ export default function ManualScreen() {
           {/* 카테고리 */}
           <View style={styles.card}>
             <FieldLabel label="카테고리" />
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ gap: 8 }}
-            >
-              {categories.map((category) => {
-                const visual = getCategory(nameToLocalCategoryId(category.name));
-                const active = form.categoryId === category.categoryId;
-                return (
-                  <TouchableOpacity
-                    key={category.categoryId}
-                    onPress={() => update({
-                      categoryId: category.categoryId,
-                      userEditedCategory: true,
-                    })}
-                    style={[
-                      styles.catChip,
-                      active && {
-                        backgroundColor: `${visual.color}1A`,
-                        borderColor: visual.color,
-                      },
-                    ]}
-                  >
-                    <Ionicons
-                      name={visual.icon}
-                      size={14}
-                      color={active ? visual.color : "#6B7280"}
-                    />
-                    <Text
-                      style={[
-                        styles.catChipText,
-                        active && { color: visual.color, fontWeight: "700" },
-                      ]}
-                    >
-                      {category.name}
-                    </Text>
-                  </TouchableOpacity>
-                );
+            <CategoryPicker
+              selectedId={form.categoryId}
+              recommendedCategoryId={form.recommendedCategoryId}
+              onSelect={(categoryId) => update({
+                categoryId,
+                categoryAutoApplied: false,
+                userEditedCategory: true,
               })}
-            </ScrollView>
+            />
+            {form.recommendedCategoryId && (
+              <Text style={styles.inputHint}>
+                {form.categoryAutoApplied
+                  ? `선택 이력 ${form.matchedCount}회 · 신뢰도 ${Math.round(form.categoryConfidence * 100)}%로 자동 적용했어요.`
+                  : `선택 이력 ${form.matchedCount}회 · 추천 카테고리를 확인해 주세요.`}
+              </Text>
+            )}
           </View>
 
           {/* 메모 */}
