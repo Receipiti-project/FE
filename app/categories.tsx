@@ -47,8 +47,17 @@ export default function CategoriesScreen() {
           <Ionicons name="chevron-back" size={24} color="#111827" />
         </Pressable>
         <Text style={styles.headerTitle}>카테고리 관리</Text>
-        <Pressable style={styles.headerButton} onPress={() => void refetch()} hitSlop={12}>
-          <Ionicons name="refresh" size={20} color="#374151" />
+        <Pressable
+          style={styles.headerButton}
+          onPress={() => void refetch()}
+          disabled={loading}
+          hitSlop={12}
+        >
+          {loading ? (
+            <ActivityIndicator size="small" color="#3B82F6" />
+          ) : (
+            <Ionicons name="refresh" size={20} color="#374151" />
+          )}
         </Pressable>
       </View>
 
@@ -70,13 +79,27 @@ export default function CategoriesScreen() {
         </View>
 
         <Text style={styles.sectionTitle}>전체 카테고리</Text>
+        {error && categories.length > 0 && (
+          <Pressable style={styles.errorBanner} onPress={() => void refetch()}>
+            <Ionicons name="alert-circle-outline" size={17} color="#B45309" />
+            <Text style={styles.errorBannerText} numberOfLines={2}>{error}</Text>
+            <Text style={styles.errorBannerRetry}>재조회</Text>
+          </Pressable>
+        )}
         {loading && categories.length === 0 ? (
-          <ActivityIndicator color="#3B82F6" style={styles.state} />
+          <View style={styles.state}>
+            <ActivityIndicator color="#3B82F6" />
+            <Text style={styles.stateText}>카테고리를 불러오는 중이에요.</Text>
+          </View>
         ) : error && categories.length === 0 ? (
           <Pressable style={styles.state} onPress={() => void refetch()}>
             <Text style={styles.errorText}>{error}</Text>
             <Text style={styles.retryText}>다시 시도</Text>
           </Pressable>
+        ) : categories.length === 0 ? (
+          <View style={styles.state}>
+            <Text style={styles.stateText}>등록된 카테고리가 없어요.</Text>
+          </View>
         ) : (
           <View style={styles.list}>
             {categories.map((category) => {

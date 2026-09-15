@@ -13,7 +13,7 @@ type CategoryContextValue = {
   loading: boolean;
   error: string | null;
   refetch: () => Promise<void>;
-  addCategory: (name: string) => Promise<void>;
+  addCategory: (name: string) => Promise<CategoryApiItem>;
   renameCategory: (id: number, name: string) => Promise<void>;
   removeCategory: (id: number) => Promise<void>;
 };
@@ -50,8 +50,14 @@ export function CategoryProvider({ children }: PropsWithChildren) {
     error,
     refetch,
     addCategory: async (name) => {
-      await createCategory(name);
-      await refetch();
+      const created = await createCategory(name);
+      setCategories((current) => {
+        const withoutDuplicate = current.filter(
+          (category) => category.categoryId !== created.categoryId
+        );
+        return [...withoutDuplicate, created];
+      });
+      return created;
     },
     renameCategory: async (id, name) => {
       await updateCategory(id, name);
