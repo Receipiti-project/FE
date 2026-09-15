@@ -161,7 +161,7 @@ export default function LedgerScreen() {
           ) : (
             <View style={styles.txList}>
               {dayItems.map((item, idx) => {
-                const cat = getCategory(item.category);
+                const cat = getCategory(item.category, item.categoryName);
                 const isLast = idx === dayItems.length - 1;
                 return (
                   <TouchableOpacity

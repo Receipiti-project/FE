@@ -14,7 +14,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
-import { formatKRW, getCategory } from "@/constants/mockData";
+import { formatKRW, getCategoryByName } from "@/constants/mockData";
 import {
   getExpenditure,
   updateExpenditure,
@@ -22,8 +22,7 @@ import {
   ExpenditureDetail,
   datetimeLocalToIso,
 } from "@/services/api/expenditureApi";
-import { nameToLocalCategoryId } from "@/services/categoryMapping";
-import { useCategories } from "@/contexts/CategoryContext";
+import { CategoryPicker } from "@/components/category-picker";
 
 const HITSLOP = { top: 12, bottom: 12, left: 12, right: 12 } as const;
 
@@ -63,7 +62,6 @@ function toEditDraft(detail: ExpenditureDetail): EditDraft {
 }
 
 export default function ExpenditureDetailScreen() {
-  const { categories } = useCategories();
   const { id } = useLocalSearchParams<{ id: string }>();
   const expenditureId = Number(id);
 
@@ -163,7 +161,7 @@ export default function ExpenditureDetailScreen() {
     );
   }
 
-  const cat = getCategory(nameToLocalCategoryId(detail.categoryName));
+  const cat = getCategoryByName(detail.categoryName);
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
@@ -244,27 +242,10 @@ export default function ExpenditureDetailScreen() {
           {editing && (
             <View style={styles.card}>
               <Text style={styles.cardLabel}>카테고리</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-                {categories.map((category) => {
-                  const visual = getCategory(nameToLocalCategoryId(category.name));
-                  const active = draft.categoryId === category.categoryId;
-                  return (
-                    <TouchableOpacity
-                      key={category.categoryId}
-                      onPress={() => updateDraft({ categoryId: category.categoryId })}
-                      style={[
-                        styles.catChip,
-                        active && { backgroundColor: `${visual.color}1A`, borderColor: visual.color },
-                      ]}
-                    >
-                      <Ionicons name={visual.icon} size={14} color={active ? visual.color : "#6B7280"} />
-                      <Text style={[styles.catChipText, active && { color: visual.color, fontWeight: "700" }]}>
-                        {category.name}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
+              <CategoryPicker
+                selectedId={draft.categoryId}
+                onSelect={(categoryId) => updateDraft({ categoryId })}
+              />
             </View>
           )}
 
