@@ -65,7 +65,12 @@
           "cameraPermission": "영수증을 촬영해 자동 입력하기 위해 카메라 권한이 필요합니다."
         }
       ],
-      "expo-audio",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "음성으로 지출을 입력하기 위해 마이크를 사용합니다."
+        }
+      ],
       [
         "expo-location",
         {
