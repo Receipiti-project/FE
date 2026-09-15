@@ -88,6 +88,8 @@ function buildPin(
 async function toPins(items: ExpenditureListItem[]): Promise<MapPin[]> {
   const resolved = await Promise.all(
     items.map(async (item): Promise<MapPin | null> => {
+      if (hasNoLocation(String(item.expenditureId))) return null;
+
       if (item.latitude != null && item.longitude != null) {
         return buildPin(
           item,
@@ -130,7 +132,8 @@ async function toPins(items: ExpenditureListItem[]): Promise<MapPin[]> {
 }
 
 function toRoutePins(places: ConsumptionRoutePlace[]): MapPin[] {
-  return [...places]
+  return places
+    .filter((p) => !hasNoLocation(String(p.expenditureId)))
     .sort((a, b) => a.sequence - b.sequence)
     .map((p) => ({
       id: String(p.expenditureId),

@@ -1,9 +1,9 @@
-import { INITIAL_REGION } from "@/constants/mapConfig";
 import { getLocationHint } from "@/scripts/currentLocation";
 import { Ionicons } from "@expo/vector-icons";
 import React, { RefObject, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   StyleSheet,
   TouchableOpacity,
   View,
@@ -28,15 +28,20 @@ export default function MapControls({ mapRef }: Props) {
     setLocating(true);
     try {
       const here = await getLocationHint();
+      if (!here) {
+        Alert.alert(
+          "현재 위치를 가져올 수 없어요",
+          "위치 권한을 확인해주세요."
+        );
+        return;
+      }
       mapRef.current?.animateToRegion(
-        here
-          ? {
-              latitude: here.latitude,
-              longitude: here.longitude,
-              latitudeDelta: MY_LOCATION_DELTA,
-              longitudeDelta: MY_LOCATION_DELTA,
-            }
-          : INITIAL_REGION,
+        {
+          latitude: here.latitude,
+          longitude: here.longitude,
+          latitudeDelta: MY_LOCATION_DELTA,
+          longitudeDelta: MY_LOCATION_DELTA,
+        },
         500
       );
     } finally {
