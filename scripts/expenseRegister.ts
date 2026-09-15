@@ -28,11 +28,14 @@ export function toCategoryId(category: string | null): CategoryId | null {
   return CATEGORY_IDS.includes(id) ? id : null;
 }
 
+const isValidAmount = (amount: number | null): amount is number =>
+  amount != null && Number.isFinite(amount) && amount > 0;
+
 export function missingRequiredFields(draft: ExpenseDraft): string[] {
   return [
-    draft.amount == null && '결제금액',
-    !draft.storeName && '가게명',
-    !draft.paymentDate && '결제일시',
+    !isValidAmount(draft.amount) && '결제금액',
+    !draft.storeName?.trim() && '가게명',
+    !draft.paymentDate?.trim() && '결제일시',
     !toCategoryId(draft.category) && '카테고리',
   ].filter(Boolean) as string[];
 }
@@ -110,18 +113,15 @@ export async function registerExpense(
   options: PlaceLookupOptions = {}
 ): Promise<string> {
   const categoryId = toCategoryId(draft.category);
+  const amount = draft.amount;
+  const storeName = draft.storeName?.trim();
+  const paymentDate = draft.paymentDate?.trim();
 
-  if (
-    draft.amount == null ||
-    !draft.storeName ||
-    !draft.paymentDate ||
-    !categoryId
-  ) {
+  if (!isValidAmount(amount) || !storeName || !paymentDate || !categoryId) {
     throw new Error('필수 항목이 비어 있습니다.');
   }
 
-  const storeName = draft.storeName.trim();
-  const expenditureDate = datetimeLocalToIso(draft.paymentDate);
+  const expenditureDate = datetimeLocalToIso(paymentDate);
 
   const place =
     known === null
@@ -135,7 +135,7 @@ export async function registerExpense(
   await createExpenditure({
     categoryId: getServerCategoryId(categoryId),
     storeName: savedName,
-    amount: draft.amount,
+    amount,
     expenditureDate,
     memo: draft.memo?.trim() || undefined,
     ...(place && {

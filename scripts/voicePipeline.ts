@@ -52,8 +52,6 @@ export async function processVoice(file: any): Promise<VoicePipelineResult> {
 }
 
 async function transcribeAudio(file: any): Promise<string> {
-  console.log("파일 uri:", file.uri);
-
   const formData = new FormData();
   formData.append("file", {
     uri: file.uri,
@@ -69,7 +67,6 @@ async function transcribeAudio(file: any): Promise<string> {
   });
 
   const data = await res.json();
-  console.log("STT 응답:", data);
   if (!data.text) throw new Error(JSON.stringify(data));
   return data.text;
 }

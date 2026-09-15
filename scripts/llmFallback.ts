@@ -13,8 +13,7 @@ interface LlmParseResponse {
 
 const CATEGORIES: CategoryType[] = ['FOOD', 'TRANSPORT', 'SHOPPING', 'CULTURE', 'HEALTH', 'ETC'];
 
-function buildPrompt(sms: string): string {
-  const now = new Date();
+function buildPrompt(sms: string, now: Date): string {
   const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   const year = now.getFullYear();
   return `다음 한국어 결제 SMS에서 가계부 항목을 추출해 JSON으로만 답하라.
@@ -42,7 +41,10 @@ SMS:
 ${sms}`;
 }
 
-export async function parseWithLLM(sms: string): Promise<LlmParseResponse> {
+export async function parseWithLLM(
+  sms: string,
+  now: Date = new Date()
+): Promise<LlmParseResponse> {
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -55,7 +57,7 @@ export async function parseWithLLM(sms: string): Promise<LlmParseResponse> {
       response_format: { type: 'json_object' },
       messages: [
         { role: 'system', content: '너는 한국어 결제 SMS를 JSON으로 구조화하는 추출기다.' },
-        { role: 'user',   content: buildPrompt(sms) },
+        { role: 'user',   content: buildPrompt(sms, now) },
       ],
     }),
   });

@@ -112,6 +112,8 @@ export default function SmsScreen() {
       return;
     }
     setLoading(true);
+    setDraft(null);
+    setBaseName(null);
     setPlace(null);
     setPlaceDropped(false);
     try {

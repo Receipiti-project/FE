@@ -97,7 +97,7 @@ export function useAndroidSms() {
 
         for (const msg of cardMsgs) {
           try {
-            const result = await smsToExpense(msg.body);
+            const result = await smsToExpense(msg.body, new Date(msg.date));
             setMessages(prev =>
               prev.map(m =>
                 m.id === msg._id ? { ...m, result, parsing: false } : m,
