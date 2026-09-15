@@ -204,7 +204,16 @@ export function useMapData(
         ? list.dailyExpenditures.flatMap((d) => d.list)
         : [];
       if (alive) {
-        setStores(toTopStores(items, 3));
+        setStores(
+          toTopStores(
+            items.filter(
+              (item) =>
+                (item.latitude != null && item.longitude != null) ||
+                classifyNonPlace(item.storeName) === null
+            ),
+            3
+          )
+        );
         setUnmapped(
           items
             .filter(

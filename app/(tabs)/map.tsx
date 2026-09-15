@@ -251,7 +251,8 @@ export default function MapScreen() {
       />
 
       <PlacePicker
-        visible={editing !== null && !saving}
+        visible={editing !== null}
+        busy={saving}
         storeName={stripBranchName(editing?.storeName ?? "")}
         near={editing?.near ?? null}
         rememberDefault={false}

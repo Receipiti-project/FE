@@ -5,7 +5,6 @@ const FRESH_WINDOW_MS = 5 * 60 * 1000;
 const LOOKUP_TIMEOUT_MS = 4000;
 
 let cached: { value: LatLng; at: number } | null = null;
-let permissionDenied = false;
 
 const toLatLng = (pos: Location.LocationObject): LatLng => ({
   latitude: pos.coords.latitude,
@@ -20,15 +19,10 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
 }
 
 async function ensurePermission(): Promise<boolean> {
-  if (permissionDenied) return false;
   const current = await Location.getForegroundPermissionsAsync();
   if (current.granted) return true;
-  if (!current.canAskAgain) {
-    permissionDenied = true;
-    return false;
-  }
+  if (!current.canAskAgain) return false;
   const asked = await Location.requestForegroundPermissionsAsync();
-  if (!asked.granted) permissionDenied = true;
   return asked.granted;
 }
 
@@ -68,5 +62,4 @@ export async function getLocationHint(): Promise<LatLng | null> {
 
 export function resetLocationHint(): void {
   cached = null;
-  permissionDenied = false;
 }
