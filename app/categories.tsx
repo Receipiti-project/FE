@@ -1,17 +1,108 @@
-import { useState } from "react";
-import { ActivityIndicator, Alert, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { PropsWithChildren, useMemo, useRef, useState } from "react";
+import { ActivityIndicator, Alert, Animated, PanResponder, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { getCategoryByName } from "@/constants/mockData";
 import { useCategories } from "@/contexts/CategoryContext";
 import { styles } from "@/styles/categoryStyles";
 
+const CATEGORY_ROW_HEIGHT = 64;
+
+type DraggableCategoryRowProps = PropsWithChildren<{
+  index: number;
+  total: number;
+  onDragStateChange: (dragging: boolean) => void;
+  onReorder: (fromIndex: number, toIndex: number) => void;
+}>;
+
+function DraggableCategoryRow({
+  children,
+  index,
+  total,
+  onDragStateChange,
+  onReorder,
+}: DraggableCategoryRowProps) {
+  const translateY = useRef(new Animated.Value(0)).current;
+  const targetIndexRef = useRef(index);
+  const [dragging, setDragging] = useState(false);
+
+  const panResponder = useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponder: () => true,
+    onPanResponderGrant: () => {
+      targetIndexRef.current = index;
+      setDragging(true);
+      onDragStateChange(true);
+    },
+    onPanResponderMove: (_event, gesture) => {
+      const minimum = -index * CATEGORY_ROW_HEIGHT;
+      const maximum = (total - index - 1) * CATEGORY_ROW_HEIGHT;
+      const offset = Math.max(minimum, Math.min(maximum, gesture.dy));
+      translateY.setValue(offset);
+      targetIndexRef.current = Math.max(
+        0,
+        Math.min(total - 1, index + Math.round(offset / CATEGORY_ROW_HEIGHT))
+      );
+    },
+    onPanResponderRelease: () => {
+      const targetIndex = targetIndexRef.current;
+      Animated.timing(translateY, {
+        toValue: (targetIndex - index) * CATEGORY_ROW_HEIGHT,
+        duration: 120,
+        useNativeDriver: true,
+      }).start(() => {
+        translateY.setValue(0);
+        if (targetIndex !== index) onReorder(index, targetIndex);
+        setDragging(false);
+        onDragStateChange(false);
+      });
+    },
+    onPanResponderTerminate: () => {
+      Animated.spring(translateY, {
+        toValue: 0,
+        useNativeDriver: true,
+      }).start();
+      setDragging(false);
+      onDragStateChange(false);
+    },
+  }), [index, onDragStateChange, onReorder, total, translateY]);
+
+  return (
+    <Animated.View
+      style={[
+        styles.row,
+        dragging && styles.draggingRow,
+        { transform: [{ translateY }] },
+      ]}
+    >
+      {children}
+      <View
+        style={styles.dragHandle}
+        accessibilityRole="adjustable"
+        accessibilityLabel="카테고리 순서 변경"
+        {...panResponder.panHandlers}
+      >
+        <Ionicons name="reorder-three-outline" size={24} color={dragging ? "#2563EB" : "#9CA3AF"} />
+      </View>
+    </Animated.View>
+  );
+}
+
 export default function CategoriesScreen() {
-  const { categories, loading, error, refetch, addCategory, renameCategory, removeCategory } = useCategories();
+  const { categories, loading, error, refetch, addCategory, renameCategory, removeCategory, reorderCategories } = useCategories();
   const [name, setName] = useState("");
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editingName, setEditingName] = useState("");
   const [saving, setSaving] = useState(false);
+  const [dragging, setDragging] = useState(false);
+
+  const handleReorder = (fromIndex: number, toIndex: number) => {
+    const reordered = [...categories];
+    const [moved] = reordered.splice(fromIndex, 1);
+    reordered.splice(toIndex, 0, moved);
+    reorderCategories(reordered.map((category) => category.categoryId));
+  };
 
   const run = async (action: () => Promise<void>) => {
     setSaving(true);
@@ -61,7 +152,11 @@ export default function CategoriesScreen() {
         </Pressable>
       </View>
 
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        scrollEnabled={!dragging}
+      >
         <Text style={styles.sectionTitle}>새 카테고리</Text>
         <View style={styles.addRow}>
           <TextInput
@@ -79,6 +174,10 @@ export default function CategoriesScreen() {
         </View>
 
         <Text style={styles.sectionTitle}>전체 카테고리</Text>
+        <View style={styles.dragHint}>
+          <Ionicons name="reorder-three-outline" size={18} color="#6B7280" />
+          <Text style={styles.dragHintText}>오른쪽 핸들을 끌어 표시 순서를 변경할 수 있어요.</Text>
+        </View>
         {error && categories.length > 0 && (
           <Pressable style={styles.errorBanner} onPress={() => void refetch()}>
             <Ionicons name="alert-circle-outline" size={17} color="#B45309" />
@@ -102,12 +201,19 @@ export default function CategoriesScreen() {
           </View>
         ) : (
           <View style={styles.list}>
-            {categories.map((category) => {
+            {categories.map((category, index) => {
               const editing = editingId === category.categoryId;
+              const visual = getCategoryByName(category.name);
               return (
-                <View key={category.categoryId} style={styles.row}>
-                  <View style={styles.categoryIcon}>
-                    <Ionicons name={category.custom ? "pricetag-outline" : "folder-outline"} size={18} color="#3B82F6" />
+                <DraggableCategoryRow
+                  key={category.categoryId}
+                  index={index}
+                  total={categories.length}
+                  onDragStateChange={setDragging}
+                  onReorder={handleReorder}
+                >
+                  <View style={[styles.categoryIcon, { backgroundColor: `${visual.color}1A` }]}>
+                    <Ionicons name={visual.icon} size={18} color={visual.color} />
                   </View>
                   {editing ? (
                     <TextInput style={styles.editInput} value={editingName} onChangeText={setEditingName} autoFocus maxLength={50} />
@@ -144,7 +250,7 @@ export default function CategoriesScreen() {
                       </Pressable>
                     </>
                   ))}
-                </View>
+                </DraggableCategoryRow>
               );
             })}
           </View>
