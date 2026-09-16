@@ -408,6 +408,34 @@ export const MONTHLY_BUDGET = 600000;
 
 export const formatKRW = (n: number) => `${n.toLocaleString("ko-KR")}원`;
 
+const CURRENCY_LOCALES: Record<string, string> = {
+  KRW: "ko-KR",
+  USD: "en-US",
+  EUR: "de-DE",
+  JPY: "ja-JP",
+};
+
+/** 통화권의 천 단위 구분 규칙으로 금액 숫자를 표시합니다. */
+export function formatCurrencyAmount(amount: number, currency = "KRW"): string {
+  const locale = CURRENCY_LOCALES[currency.toUpperCase()] ?? "en-US";
+  return new Intl.NumberFormat(locale, {
+    maximumFractionDigits: 0,
+  }).format(amount);
+}
+
+/** 통화별 기호와 해당 통화권의 구분 규칙을 함께 적용합니다. */
+export function formatCurrency(amount: number, currency = "KRW"): string {
+  const normalizedCurrency = currency.toUpperCase();
+  const locale = CURRENCY_LOCALES[normalizedCurrency] ?? "en-US";
+  return new Intl.NumberFormat(locale, {
+    style: "currency",
+    currency: normalizedCurrency,
+    currencyDisplay: "narrowSymbol",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(amount);
+}
+
 export const formatTime = (iso: string) => {
   const d = new Date(iso);
   const hh = `${d.getHours()}`.padStart(2, "0");

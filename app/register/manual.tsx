@@ -14,11 +14,12 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { formatKRW } from "@/constants/mockData";
+import { formatCurrencyAmount } from "@/constants/mockData";
 import {
   createExpenditure,
   nowAsDatetimeLocal,
   datetimeLocalToIso,
+  expenditureDateParam,
 } from "@/services/api/expenditureApi";
 import {
   getCategoryRecommendation,
@@ -26,11 +27,26 @@ import {
 } from "@/services/api/categoryApi";
 import { useCategories } from "@/contexts/CategoryContext";
 import { CategoryPicker } from "@/components/category-picker";
+import DateTimePicker from "@react-native-community/datetimepicker";
 
 const HITSLOP = { top: 12, bottom: 12, left: 12, right: 12 } as const;
 
-const CURRENCY_OPTIONS = ["KRW", "USD", "EUR", "JPY", "CNY"] as const;
+const CURRENCY_OPTIONS = ["KRW", "USD", "EUR", "JPY"] as const;
 type Currency = (typeof CURRENCY_OPTIONS)[number];
+type PickerMode = "date" | "time";
+
+function asDate(value: string): Date {
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+}
+
+function asDatetimeLocal(date: Date): string {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return (
+    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
+    `T${pad(date.getHours())}:${pad(date.getMinutes())}`
+  );
+}
 
 type Form = {
   storeName: string;
@@ -64,6 +80,7 @@ export default function ManualScreen() {
   const { categories } = useCategories();
   const [form, setForm] = useState<Form>(DEFAULT_FORM);
   const [saving, setSaving] = useState(false);
+  const [androidPickerMode, setAndroidPickerMode] = useState<PickerMode | null>(null);
 
   const update = (patch: Partial<Form>) =>
     setForm((prev) => ({ ...prev, ...patch }));
@@ -104,6 +121,7 @@ export default function ManualScreen() {
     if (err) return Alert.alert("입력 확인", err);
 
     const amount = parseInt(form.amount.replace(/[^0-9]/g, ""), 10);
+    const expenditureDate = datetimeLocalToIso(form.expenditureDate);
     setSaving(true);
 
     try {
@@ -112,13 +130,19 @@ export default function ManualScreen() {
         defaultCategoryId: form.categoryAutoApplied ? form.categoryId! : undefined,
         storeName: form.storeName.trim(),
         amount,
-        expenditureDate: datetimeLocalToIso(form.expenditureDate),
+        expenditureDate,
         memo: form.memo.trim() || undefined,
         currency: form.currency,
       });
 
       Alert.alert("등록 완료", "가계부에 추가되었어요.", [
-        { text: "확인", onPress: () => router.back() },
+        {
+          text: "확인",
+          onPress: () => router.replace({
+            pathname: "/(tabs)/budget",
+            params: { date: expenditureDateParam(expenditureDate) },
+          }),
+        },
       ]);
     } catch (e) {
       Alert.alert("저장 실패", (e as Error)?.message ?? "잠시 후 다시 시도해주세요.");
@@ -128,6 +152,18 @@ export default function ManualScreen() {
   };
 
   const amountNum = parseInt(form.amount.replace(/[^0-9]/g, ""), 10) || 0;
+  const selectedDateTime = asDate(form.expenditureDate);
+
+  const changeDateTime = (mode: PickerMode, selected?: Date) => {
+    if (!selected) return;
+    const next = asDate(form.expenditureDate);
+    if (mode === "date") {
+      next.setFullYear(selected.getFullYear(), selected.getMonth(), selected.getDate());
+    } else {
+      next.setHours(selected.getHours(), selected.getMinutes(), 0, 0);
+    }
+    update({ expenditureDate: asDatetimeLocal(next) });
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
@@ -203,24 +239,89 @@ export default function ManualScreen() {
                 ))}
               </View>
             </View>
-            {amountNum > 0 && form.currency === "KRW" && (
-              <Text style={styles.amountPreview}>{formatKRW(amountNum)}</Text>
+            {amountNum > 0 && (
+              <Text style={styles.amountPreview}>
+                {formatCurrencyAmount(amountNum, form.currency)} {form.currency}
+              </Text>
             )}
           </View>
 
           {/* 날짜 */}
           <View style={styles.card}>
             <FieldLabel label="결제 일시" required />
-            <TextInput
-              style={styles.input}
-              value={form.expenditureDate}
-              onChangeText={(v) => update({ expenditureDate: v })}
-              placeholder="YYYY-MM-DDTHH:mm"
-              placeholderTextColor="#9CA3AF"
-              autoCapitalize="none"
-              keyboardType={Platform.OS === "ios" ? "numbers-and-punctuation" : "default"}
-            />
-            <Text style={styles.inputHint}>예: 2026-06-10T14:30</Text>
+            <View style={styles.dateTimeRow}>
+              <View style={styles.dateTimeControl}>
+                <View style={styles.dateTimeLabelRow}>
+                  <Ionicons name="calendar-outline" size={15} color="#3B82F6" />
+                  <Text style={styles.dateTimeLabel}>날짜</Text>
+                </View>
+                {Platform.OS === "ios" ? (
+                  <DateTimePicker
+                    value={selectedDateTime}
+                    mode="date"
+                    display="compact"
+                    locale="ko-KR"
+                    maximumDate={new Date()}
+                    accentColor="#3B82F6"
+                    onChange={(_, selected) => changeDateTime("date", selected)}
+                  />
+                ) : (
+                  <TouchableOpacity
+                    onPress={() => setAndroidPickerMode("date")}
+                    style={styles.androidDateButton}
+                  >
+                    <Text style={styles.androidDateText}>
+                      {selectedDateTime.toLocaleDateString("ko-KR", {
+                        year: "numeric",
+                        month: "long",
+                        day: "numeric",
+                      })}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+              <View style={styles.dateTimeControl}>
+                <View style={styles.dateTimeLabelRow}>
+                  <Ionicons name="time-outline" size={15} color="#3B82F6" />
+                  <Text style={styles.dateTimeLabel}>시간</Text>
+                </View>
+                {Platform.OS === "ios" ? (
+                  <DateTimePicker
+                    value={selectedDateTime}
+                    mode="time"
+                    display="compact"
+                    locale="ko-KR"
+                    minuteInterval={1}
+                    accentColor="#3B82F6"
+                    onChange={(_, selected) => changeDateTime("time", selected)}
+                  />
+                ) : (
+                  <TouchableOpacity
+                    onPress={() => setAndroidPickerMode("time")}
+                    style={styles.androidDateButton}
+                  >
+                    <Text style={styles.androidDateText}>
+                      {selectedDateTime.toLocaleTimeString("ko-KR", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+            {Platform.OS !== "ios" && androidPickerMode && (
+              <DateTimePicker
+                value={selectedDateTime}
+                mode={androidPickerMode}
+                maximumDate={androidPickerMode === "date" ? new Date() : undefined}
+                onChange={(event, selected) => {
+                  const mode = androidPickerMode;
+                  setAndroidPickerMode(null);
+                  if (event.type !== "dismissed") changeDateTime(mode, selected);
+                }}
+              />
+            )}
           </View>
 
           {/* 카테고리 */}
@@ -274,8 +375,8 @@ export default function ManualScreen() {
               <>
                 <Ionicons name="checkmark-circle" size={18} color="#FFFFFF" />
                 <Text style={styles.saveBtnText}>
-                  {amountNum > 0 && form.currency === "KRW"
-                    ? `${formatKRW(amountNum)} 등록`
+                  {amountNum > 0
+                    ? `${formatCurrencyAmount(amountNum, form.currency)} ${form.currency} 등록`
                     : "등록"}
                 </Text>
               </>
@@ -378,6 +479,39 @@ const styles = StyleSheet.create({
     color: "#9CA3AF",
     fontSize: 11,
     marginTop: 5,
+  },
+  dateTimeRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  dateTimeControl: {
+    flex: 1,
+    minHeight: 78,
+    padding: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    backgroundColor: "#F9FAFB",
+    justifyContent: "space-between",
+  },
+  dateTimeLabelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  },
+  dateTimeLabel: {
+    color: "#6B7280",
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  androidDateButton: {
+    minHeight: 34,
+    justifyContent: "center",
+  },
+  androidDateText: {
+    color: "#111827",
+    fontSize: 13,
+    fontWeight: "700",
   },
   catChip: {
     flexDirection: "row",

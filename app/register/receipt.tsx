@@ -31,19 +31,12 @@ import {
   getCategoryRecommendation,
   resolveCategoryRecommendation,
 } from "@/services/api/categoryApi";
+import { expenditureDateParam } from "@/services/api/expenditureApi";
 
 const HITSLOP = { top: 12, bottom: 12, left: 12, right: 12 } as const;
 
 function formatAmountInput(value: number): string {
   return value > 0 ? value.toLocaleString("ko-KR") : "";
-}
-
-function savedDateParam(iso?: string): string {
-  const date = iso ? new Date(iso) : new Date();
-  const validDate = Number.isNaN(date.getTime()) ? new Date() : date;
-  const month = String(validDate.getMonth() + 1).padStart(2, "0");
-  const day = String(validDate.getDate()).padStart(2, "0");
-  return `${validDate.getFullYear()}-${month}-${day}`;
 }
 
 type Step = "idle" | "analyzing" | "review" | "saving";
@@ -248,7 +241,7 @@ export default function ReceiptScreen() {
           onPress: () =>
             router.replace({
               pathname: "/(tabs)/budget",
-              params: { date: savedDateParam(draft.purchasedAtIso) },
+              params: { date: expenditureDateParam(draft.purchasedAtIso) },
             }),
         },
       ]);

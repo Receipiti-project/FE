@@ -382,6 +382,20 @@ export function nowAsDatetimeLocal(): string {
   );
 }
 
+/** 결제일시를 가계부 화면의 YYYY-MM-DD 날짜 파라미터로 변환합니다. */
+export function expenditureDateParam(value?: string): string {
+  if (value && !value.endsWith("Z") && !/[+-]\d{2}:\d{2}$/.test(value)) {
+    const localDate = value.match(/^\d{4}-\d{2}-\d{2}/)?.[0];
+    if (localDate) return localDate;
+  }
+
+  const parsed = value ? new Date(value) : new Date();
+  const date = Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
 /**
  * GET /api/v1/expenditures?year=YYYY&month=MM
  * 특정 년/월의 지출 내역 목록 조회

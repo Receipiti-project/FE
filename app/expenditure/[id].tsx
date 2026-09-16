@@ -14,13 +14,14 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
-import { formatKRW, getCategoryByName } from "@/constants/mockData";
+import { formatCurrency, getCategoryByName } from "@/constants/mockData";
 import {
   getExpenditure,
   updateExpenditure,
   deleteExpenditure,
   ExpenditureDetail,
   datetimeLocalToIso,
+  formatIsoToKorean,
 } from "@/services/api/expenditureApi";
 import { CategoryPicker } from "@/components/category-picker";
 
@@ -201,13 +202,7 @@ export default function ExpenditureDetailScreen() {
             <Ionicons name={editing ? "close" : "chevron-back"} size={22} color="#111827" />
           </TouchableOpacity>
           <Text style={styles.topTitle}>{editing ? "지출 수정" : "지출 상세"}</Text>
-          {!editing ? (
-            <TouchableOpacity onPress={() => setEditing(true)} style={styles.iconBtn} hitSlop={HITSLOP}>
-              <Ionicons name="create-outline" size={22} color="#3B82F6" />
-            </TouchableOpacity>
-          ) : (
-            <View style={styles.iconBtn} />
-          )}
+          <View style={styles.iconBtn} />
         </View>
 
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
@@ -226,7 +221,9 @@ export default function ExpenditureDetailScreen() {
                 placeholder="0"
               />
             ) : (
-              <Text style={styles.amountText}>{formatKRW(detail.amount)}</Text>
+              <Text style={styles.amountText}>
+                {formatCurrency(detail.amount, detail.currency)}
+              </Text>
             )}
             <Text style={styles.amountCurrency}>{draft.currency}</Text>
           </View>
@@ -245,7 +242,7 @@ export default function ExpenditureDetailScreen() {
               label="결제일시"
               icon="time-outline"
               editing={editing}
-              value={draft.expenditureDate}
+              value={editing ? draft.expenditureDate : formatIsoToKorean(detail.expenditureDate)}
               onChangeText={(v) => updateDraft({ expenditureDate: v })}
               placeholder="YYYY-MM-DD HH:mm"
             />
@@ -276,7 +273,7 @@ export default function ExpenditureDetailScreen() {
             <View style={styles.card}>
               <Text style={styles.cardLabel}>통화</Text>
               <View style={styles.chipRow}>
-                {["KRW", "USD", "EUR", "JPY", "CNY"].map((cur) => {
+                {["KRW", "USD", "EUR", "JPY"].map((cur) => {
                   const active = draft.currency === cur;
                   return (
                     <TouchableOpacity

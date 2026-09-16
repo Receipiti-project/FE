@@ -18,7 +18,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { styles } from "@/styles/register/captureStyles";
 import {
-  formatKRW,
+  formatCurrency,
   getCategoryByName,
 } from "@/constants/mockData";
 import {
@@ -30,6 +30,7 @@ import {
   saveTransactions,
 } from "@/services/ocr";
 import { useCategories } from "@/contexts/CategoryContext";
+import { expenditureDateParam } from "@/services/api/expenditureApi";
 import {
   CategoryApiItem,
   getCategoryRecommendation,
@@ -239,7 +240,14 @@ export default function CaptureScreen() {
   };
 
   const selectedDrafts = drafts.filter((d) => d.include);
-  const selectedTotal = selectedDrafts.reduce((s, d) => s + d.amount, 0);
+  const selectedTotals = [...selectedDrafts.reduce((totals, draft) => {
+    const currency = draft.currency || "KRW";
+    totals.set(currency, (totals.get(currency) ?? 0) + draft.amount);
+    return totals;
+  }, new Map<string, number>()).entries()];
+  const selectedTotalLabel = selectedTotals
+    .map(([currency, amount]) => formatCurrency(amount, currency))
+    .join(" · ");
 
   const onSave = async () => {
     if (selectedDrafts.length === 0) {
@@ -276,8 +284,21 @@ export default function CaptureScreen() {
       );
       Alert.alert(
         "등록 완료",
-        `${selectedDrafts.length}건이 가계부에 추가되었어요.`,
-        [{ text: "확인", onPress: () => router.back() }]
+        "가계부에 추가되었어요.",
+        [{
+          text: "확인",
+          onPress: () => {
+            const latest = [...selectedDrafts].sort((a, b) =>
+              (b.paidAtIso ?? b.paidAt ?? "").localeCompare(
+                a.paidAtIso ?? a.paidAt ?? ""
+              )
+            )[0];
+            router.replace({
+              pathname: "/(tabs)/budget",
+              params: { date: expenditureDateParam(latest?.paidAtIso ?? latest?.paidAt) },
+            });
+          },
+        }]
       );
     } catch (error) {
       Alert.alert(
@@ -413,7 +434,7 @@ export default function CaptureScreen() {
             <Text style={styles.bottomMeta}>
               선택 {selectedDrafts.length}건 · 합계
             </Text>
-            <Text style={styles.bottomTotal}>{formatKRW(selectedTotal)}</Text>
+            <Text style={styles.bottomTotal}>{selectedTotalLabel || "-"}</Text>
           </View>
           <TouchableOpacity
             onPress={onSave}
@@ -493,7 +514,7 @@ function PaymentCard({
               {draft.store || "(가맹점명 없음)"}
             </Text>
             <Text style={styles.payAmount}>
-              {formatKRW(draft.amount)}
+              {formatCurrency(draft.amount, draft.currency)}
             </Text>
           </View>
           <View style={styles.tagRow}>
