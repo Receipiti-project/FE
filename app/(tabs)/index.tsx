@@ -13,7 +13,6 @@ import { router } from "expo-router";
 import {
   ACTIVITY_ZONES,
   AI_INSIGHTS,
-  AI_SUGGESTED_QUESTIONS,
   CATEGORIZATION_STATS,
   formatKRW,
   getCategory,
@@ -133,32 +132,6 @@ export default function HomeScreen() {
             </View>
             <View style={styles.todayIconWrap}>
               <Ionicons name="today-outline" size={28} color={BLUE} />
-            </View>
-          </View>
-        </View>
-
-        {/* AI 어시스턴트 배너 */}
-        <View style={styles.section}>
-          <View style={styles.aiBanner}>
-            <View style={styles.aiAvatar}>
-              <Ionicons name="sparkles" size={18} color="#FFFFFF" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.aiBannerTitle}>AI에게 내 소비를 물어보세요</Text>
-              <Text style={styles.aiBannerSub}>
-                자연어 질문 · 영수증·캡처 자동 학습 · 카테고리 자동분류
-              </Text>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={{ gap: 6, paddingTop: 10 }}
-              >
-                {AI_SUGGESTED_QUESTIONS.slice(0, 3).map((q) => (
-                  <View key={q} style={styles.aiPrompt}>
-                    <Text style={styles.aiPromptText} numberOfLines={1}>{q}</Text>
-                  </View>
-                ))}
-              </ScrollView>
             </View>
           </View>
         </View>
@@ -327,12 +300,6 @@ const styles = StyleSheet.create({
   quickItem: { alignItems: "center", width: "18%" },
   quickIconWrap: { width: 52, height: 52, borderRadius: 16, alignItems: "center", justifyContent: "center", marginBottom: 6 },
   quickLabel: { fontSize: 12, fontWeight: "600", color: "#374151" },
-  aiBanner: { flexDirection: "row", backgroundColor: "#1E1B4B", borderRadius: 18, padding: 16, gap: 12, alignItems: "flex-start" },
-  aiAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: "#7C3AED", alignItems: "center", justifyContent: "center" },
-  aiBannerTitle: { color: "#FFFFFF", fontWeight: "700", fontSize: 14 },
-  aiBannerSub: { color: "#A5B4FC", fontSize: 11, marginTop: 4, lineHeight: 16 },
-  aiPrompt: { backgroundColor: "rgba(255,255,255,0.08)", borderWidth: 1, borderColor: "rgba(255,255,255,0.12)", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999 },
-  aiPromptText: { color: "#E0E7FF", fontSize: 11, fontWeight: "600" },
   zoneCard: { width: 160, backgroundColor: "#FFFFFF", borderRadius: 16, padding: 14, borderWidth: 1, borderColor: "#F3F4F6", overflow: "hidden" },
   zoneAccent: { position: "absolute", top: 0, left: 0, right: 0, height: 4 },
   zoneHead: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 4 },
