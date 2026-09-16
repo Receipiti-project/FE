@@ -4,6 +4,7 @@ import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { CategoryProvider } from "@/contexts/CategoryContext";
+import { BudgetProvider } from "@/contexts/BudgetContext";
 
 function RootNavigator() {
   const { ready, signedIn } = useAuth();
@@ -50,9 +51,11 @@ function RootNavigator() {
 export default function RootLayout() {
   return (
     <AuthProvider>
-      <CategoryProvider>
-        <RootNavigator />
-      </CategoryProvider>
+      <BudgetProvider>
+        <CategoryProvider>
+          <RootNavigator />
+        </CategoryProvider>
+      </BudgetProvider>
     </AuthProvider>
   );
 }

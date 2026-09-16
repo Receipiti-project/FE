@@ -15,7 +15,6 @@ import {
   AI_INSIGHTS,
   AI_SUGGESTED_QUESTIONS,
   CATEGORIZATION_STATS,
-  MONTHLY_BUDGET,
   formatKRW,
   getCategory,
   IoniconName,
@@ -25,6 +24,7 @@ import {
   formatDateLabelReal,
   formatTimeReal,
 } from "@/hooks/useExpenditures";
+import { useBudget } from "@/contexts/BudgetContext";
 
 const BLUE = "#3B82F6";
 
@@ -43,6 +43,7 @@ const QUICK_ACTIONS: {
 ];
 
 export default function HomeScreen() {
+  const { monthlyBudget } = useBudget();
   const {
     loading,
     totalAmount,
@@ -53,8 +54,8 @@ export default function HomeScreen() {
     refetch,
   } = useExpenditures(4);
 
-  const usedRatio = Math.min(totalAmount / MONTHLY_BUDGET, 1);
-  const remaining = Math.max(MONTHLY_BUDGET - totalAmount, 0);
+  const usedRatio = Math.min(totalAmount / monthlyBudget, 1);
+  const remaining = Math.max(monthlyBudget - totalAmount, 0);
   const insight = AI_INSIGHTS[0];
 
   return (
@@ -89,7 +90,7 @@ export default function HomeScreen() {
             <Text style={styles.spendAmount}>{formatKRW(totalAmount)}</Text>
           )}
           <View style={styles.budgetRow}>
-            <Text style={styles.budgetText}>예산 {formatKRW(MONTHLY_BUDGET)}</Text>
+            <Text style={styles.budgetText}>예산 {formatKRW(monthlyBudget)}</Text>
           </View>
           <View style={styles.progressTrack}>
             <View style={[styles.progressFill, { width: `${usedRatio * 100}%` }]} />

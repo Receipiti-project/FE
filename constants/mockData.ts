@@ -403,9 +403,6 @@ export const AI_INSIGHTS = [
   },
 ];
 
-/* 이번 달 예산 */
-export const MONTHLY_BUDGET = 600000;
-
 export const formatKRW = (n: number) => `${n.toLocaleString("ko-KR")}원`;
 
 const CURRENCY_LOCALES: Record<string, string> = {
