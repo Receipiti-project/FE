@@ -13,10 +13,7 @@ import { router } from "expo-router";
 import {
   ACTIVITY_ZONES,
   AI_INSIGHTS,
-  AI_SUGGESTED_QUESTIONS,
-  CATEGORIES,
   CATEGORIZATION_STATS,
-  MONTHLY_BUDGET,
   formatKRW,
   getCategory,
   IoniconName,
@@ -26,6 +23,7 @@ import {
   formatDateLabelReal,
   formatTimeReal,
 } from "@/hooks/useExpenditures";
+import { useBudget } from "@/contexts/BudgetContext";
 
 const BLUE = "#3B82F6";
 
@@ -44,17 +42,19 @@ const QUICK_ACTIONS: {
 ];
 
 export default function HomeScreen() {
+  const { monthlyBudget } = useBudget();
   const {
     loading,
     totalAmount,
     todayTotal,
     todayCount,
     recentItems,
+    byCategoryReport,
     refetch,
   } = useExpenditures(4);
 
-  const usedRatio = Math.min(totalAmount / MONTHLY_BUDGET, 1);
-  const remaining = Math.max(MONTHLY_BUDGET - totalAmount, 0);
+  const usedRatio = Math.min(totalAmount / monthlyBudget, 1);
+  const remaining = Math.max(monthlyBudget - totalAmount, 0);
   const insight = AI_INSIGHTS[0];
 
   return (
@@ -62,8 +62,21 @@ export default function HomeScreen() {
       <ScrollView contentContainerStyle={styles.scroll}>
         {/* 헤더 */}
         <View style={styles.headerRow}>
-          <TouchableOpacity style={styles.bellBtn} onPress={refetch}>
+          <TouchableOpacity
+            accessibilityLabel="알림"
+            accessibilityRole="button"
+            style={styles.headerButton}
+            onPress={refetch}
+          >
             <Ionicons name="notifications-outline" size={22} color="#374151" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            accessibilityLabel="마이페이지"
+            accessibilityRole="button"
+            style={styles.headerButton}
+            onPress={() => router.push("/mypage")}
+          >
+            <Ionicons name="person-outline" size={22} color="#374151" />
           </TouchableOpacity>
         </View>
 
@@ -76,7 +89,7 @@ export default function HomeScreen() {
             <Text style={styles.spendAmount}>{formatKRW(totalAmount)}</Text>
           )}
           <View style={styles.budgetRow}>
-            <Text style={styles.budgetText}>예산 {formatKRW(MONTHLY_BUDGET)}</Text>
+            <Text style={styles.budgetText}>예산 {formatKRW(monthlyBudget)}</Text>
           </View>
           <View style={styles.progressTrack}>
             <View style={[styles.progressFill, { width: `${usedRatio * 100}%` }]} />
@@ -119,32 +132,6 @@ export default function HomeScreen() {
             </View>
             <View style={styles.todayIconWrap}>
               <Ionicons name="today-outline" size={28} color={BLUE} />
-            </View>
-          </View>
-        </View>
-
-        {/* AI 어시스턴트 배너 */}
-        <View style={styles.section}>
-          <View style={styles.aiBanner}>
-            <View style={styles.aiAvatar}>
-              <Ionicons name="sparkles" size={18} color="#FFFFFF" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.aiBannerTitle}>AI에게 내 소비를 물어보세요</Text>
-              <Text style={styles.aiBannerSub}>
-                자연어 질문 · 영수증·캡처 자동 학습 · 카테고리 자동분류
-              </Text>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={{ gap: 6, paddingTop: 10 }}
-              >
-                {AI_SUGGESTED_QUESTIONS.slice(0, 3).map((q) => (
-                  <View key={q} style={styles.aiPrompt}>
-                    <Text style={styles.aiPromptText} numberOfLines={1}>{q}</Text>
-                  </View>
-                ))}
-              </ScrollView>
             </View>
           </View>
         </View>
@@ -192,7 +179,7 @@ export default function HomeScreen() {
           ) : (
             <View style={styles.txList}>
               {recentItems.map((t, idx) => {
-                const cat = getCategory(t.category);
+                const cat = getCategory(t.category, t.categoryName);
                 const isLast = idx === recentItems.length - 1;
                 return (
                   <View
@@ -272,14 +259,17 @@ export default function HomeScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>카테고리 한눈에</Text>
           <View style={styles.catGrid}>
-            {CATEGORIES.slice(0, 6).map((c) => (
-              <View key={c.id} style={styles.catChip}>
-                <View style={[styles.catChipIcon, { backgroundColor: `${c.color}1A` }]}>
-                  <Ionicons name={c.icon} size={16} color={c.color} />
+            {byCategoryReport.slice(0, 6).map((category) => {
+              const visual = getCategory(category.id, category.name);
+              return (
+              <View key={category.id} style={styles.catChip}>
+                <View style={[styles.catChipIcon, { backgroundColor: `${visual.color}1A` }]}>
+                  <Ionicons name={visual.icon} size={16} color={visual.color} />
                 </View>
-                <Text style={styles.catChipLabel}>{c.label}</Text>
+                <Text style={styles.catChipLabel}>{category.name}</Text>
               </View>
-            ))}
+              );
+            })}
           </View>
         </View>
 
@@ -292,8 +282,8 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F9FAFB" },
   scroll: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 20 },
-  headerRow: { flexDirection: "row", justifyContent: "flex-end", alignItems: "center", marginBottom: 20 },
-  bellBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: "#FFFFFF", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#F3F4F6" },
+  headerRow: { flexDirection: "row", justifyContent: "flex-end", alignItems: "center", gap: 8, marginBottom: 20 },
+  headerButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: "#FFFFFF", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#F3F4F6" },
   spendCard: { backgroundColor: "#111827", borderRadius: 20, padding: 20 },
   spendLabel: { color: "#9CA3AF", fontSize: 13, fontWeight: "600" },
   spendAmount: { color: "#FFFFFF", fontSize: 30, fontWeight: "800", marginTop: 6 },
@@ -310,12 +300,6 @@ const styles = StyleSheet.create({
   quickItem: { alignItems: "center", width: "18%" },
   quickIconWrap: { width: 52, height: 52, borderRadius: 16, alignItems: "center", justifyContent: "center", marginBottom: 6 },
   quickLabel: { fontSize: 12, fontWeight: "600", color: "#374151" },
-  aiBanner: { flexDirection: "row", backgroundColor: "#1E1B4B", borderRadius: 18, padding: 16, gap: 12, alignItems: "flex-start" },
-  aiAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: "#7C3AED", alignItems: "center", justifyContent: "center" },
-  aiBannerTitle: { color: "#FFFFFF", fontWeight: "700", fontSize: 14 },
-  aiBannerSub: { color: "#A5B4FC", fontSize: 11, marginTop: 4, lineHeight: 16 },
-  aiPrompt: { backgroundColor: "rgba(255,255,255,0.08)", borderWidth: 1, borderColor: "rgba(255,255,255,0.12)", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999 },
-  aiPromptText: { color: "#E0E7FF", fontSize: 11, fontWeight: "600" },
   zoneCard: { width: 160, backgroundColor: "#FFFFFF", borderRadius: 16, padding: 14, borderWidth: 1, borderColor: "#F3F4F6", overflow: "hidden" },
   zoneAccent: { position: "absolute", top: 0, left: 0, right: 0, height: 4 },
   zoneHead: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 4 },

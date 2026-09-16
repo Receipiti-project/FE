@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -14,24 +14,16 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
-import {
-  CATEGORIES,
-  CategoryId,
-  formatKRW,
-  getCategory,
-} from "@/constants/mockData";
+import { formatCurrency, getCategoryByName } from "@/constants/mockData";
 import {
   getExpenditure,
   updateExpenditure,
   deleteExpenditure,
   ExpenditureDetail,
   datetimeLocalToIso,
+  formatIsoToKorean,
 } from "@/services/api/expenditureApi";
-import {
-  getServerCategoryId,
-  getLocalCategoryId,
-  nameToLocalCategoryId,
-} from "@/services/categoryMapping";
+import { CategoryPicker } from "@/components/category-picker";
 
 const HITSLOP = { top: 12, bottom: 12, left: 12, right: 12 } as const;
 
@@ -39,7 +31,7 @@ type EditDraft = {
   storeName: string;
   amount: string;
   expenditureDate: string;
-  category: CategoryId;
+  categoryId: number;
   memo: string;
   currency: string;
 };
@@ -59,17 +51,37 @@ function isoToLocal(iso: string): string {
   }
 }
 
-function detailToCategory(detail: ExpenditureDetail): CategoryId {
-  // categoryName 문자열 매핑 우선 (목록 뷰와 일관성 유지)
-  if (detail.categoryName) {
-    const fromName = nameToLocalCategoryId(detail.categoryName);
-    if (fromName !== "etc") return fromName;
-  }
-  // fallback: 서버 categoryId → 로컬 ID
-  if (detail.categoryId) {
-    return getLocalCategoryId(detail.categoryId);
-  }
-  return "etc";
+function formatDateOnly(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  return date.toLocaleDateString("ko-KR", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+}
+
+const INPUT_TYPE_LABEL: Record<ExpenditureDetail["inputType"], string> = {
+  OCR: "영수증 OCR",
+  VOICE: "음성 입력",
+  MANUAL: "직접 입력",
+  SMS: "문자 파싱",
+  CAPTURE: "카드 알림 캡처",
+};
+
+function inputTypeLabel(inputType: ExpenditureDetail["inputType"]): string {
+  return INPUT_TYPE_LABEL[inputType] ?? inputType;
+}
+
+function toEditDraft(detail: ExpenditureDetail): EditDraft {
+  return {
+    storeName: detail.storeName ?? "",
+    amount: String(detail.amount ?? 0),
+    expenditureDate: isoToLocal(detail.expenditureDate),
+    categoryId: detail.categoryId,
+    memo: detail.memo ?? "",
+    currency: detail.currency ?? "KRW",
+  };
 }
 
 export default function ExpenditureDetailScreen() {
@@ -82,34 +94,23 @@ export default function ExpenditureDetailScreen() {
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState<EditDraft | null>(null);
 
-  useEffect(() => {
-    loadDetail();
-  }, []);
-
-  async function loadDetail() {
+  const loadDetail = useCallback(async () => {
     setLoading(true);
     try {
       const data = await getExpenditure(expenditureId);
       setDetail(data);
       setDraft(toEditDraft(data));
-    } catch (e) {
+    } catch {
       Alert.alert("오류", "지출 정보를 불러오지 못했어요.");
       router.back();
     } finally {
       setLoading(false);
     }
-  }
+  }, [expenditureId]);
 
-  function toEditDraft(d: ExpenditureDetail): EditDraft {
-    return {
-      storeName: d.storeName ?? "",
-      amount: String(d.amount ?? 0),
-      expenditureDate: isoToLocal(d.expenditureDate),
-      category: detailToCategory(d),
-      memo: d.memo ?? "",
-      currency: d.currency ?? "KRW",
-    };
-  }
+  useEffect(() => {
+    void loadDetail();
+  }, [loadDetail]);
 
   function updateDraft(patch: Partial<EditDraft>) {
     setDraft((prev) => prev ? { ...prev, ...patch } : prev);
@@ -130,14 +131,14 @@ export default function ExpenditureDetailScreen() {
         storeName: draft.storeName.trim(),
         amount,
         expenditureDate: datetimeLocalToIso(draft.expenditureDate),
-        categoryId: getServerCategoryId(draft.category),
+        categoryId: draft.categoryId,
         memo: draft.memo,
         currency: draft.currency,
       });
       Alert.alert("수정 완료", "지출 내역이 수정되었어요.", [
         { text: "확인", onPress: () => { setEditing(false); loadDetail(); } },
       ]);
-    } catch (e) {
+    } catch {
       Alert.alert("저장 실패", "잠시 후 다시 시도해주세요.");
     } finally {
       setSaving(false);
@@ -183,7 +184,7 @@ export default function ExpenditureDetailScreen() {
     );
   }
 
-  const cat = getCategory(draft.category);
+  const cat = getCategoryByName(detail.categoryName);
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
@@ -201,13 +202,7 @@ export default function ExpenditureDetailScreen() {
             <Ionicons name={editing ? "close" : "chevron-back"} size={22} color="#111827" />
           </TouchableOpacity>
           <Text style={styles.topTitle}>{editing ? "지출 수정" : "지출 상세"}</Text>
-          {!editing ? (
-            <TouchableOpacity onPress={() => setEditing(true)} style={styles.iconBtn} hitSlop={HITSLOP}>
-              <Ionicons name="create-outline" size={22} color="#3B82F6" />
-            </TouchableOpacity>
-          ) : (
-            <View style={styles.iconBtn} />
-          )}
+          <View style={styles.iconBtn} />
         </View>
 
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
@@ -226,7 +221,9 @@ export default function ExpenditureDetailScreen() {
                 placeholder="0"
               />
             ) : (
-              <Text style={styles.amountText}>{formatKRW(detail.amount)}</Text>
+              <Text style={styles.amountText}>
+                {formatCurrency(detail.amount, detail.currency)}
+              </Text>
             )}
             <Text style={styles.amountCurrency}>{draft.currency}</Text>
           </View>
@@ -245,7 +242,7 @@ export default function ExpenditureDetailScreen() {
               label="결제일시"
               icon="time-outline"
               editing={editing}
-              value={draft.expenditureDate}
+              value={editing ? draft.expenditureDate : formatIsoToKorean(detail.expenditureDate)}
               onChangeText={(v) => updateDraft({ expenditureDate: v })}
               placeholder="YYYY-MM-DD HH:mm"
             />
@@ -264,26 +261,10 @@ export default function ExpenditureDetailScreen() {
           {editing && (
             <View style={styles.card}>
               <Text style={styles.cardLabel}>카테고리</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-                {CATEGORIES.map((c) => {
-                  const active = draft.category === c.id;
-                  return (
-                    <TouchableOpacity
-                      key={c.id}
-                      onPress={() => updateDraft({ category: c.id })}
-                      style={[
-                        styles.catChip,
-                        active && { backgroundColor: `${c.color}1A`, borderColor: c.color },
-                      ]}
-                    >
-                      <Ionicons name={c.icon} size={14} color={active ? c.color : "#6B7280"} />
-                      <Text style={[styles.catChipText, active && { color: c.color, fontWeight: "700" }]}>
-                        {c.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
+              <CategoryPicker
+                selectedId={draft.categoryId}
+                onSelect={(categoryId) => updateDraft({ categoryId })}
+              />
             </View>
           )}
 
@@ -292,7 +273,7 @@ export default function ExpenditureDetailScreen() {
             <View style={styles.card}>
               <Text style={styles.cardLabel}>통화</Text>
               <View style={styles.chipRow}>
-                {["KRW", "USD", "EUR", "JPY", "CNY"].map((cur) => {
+                {["KRW", "USD", "EUR", "JPY"].map((cur) => {
                   const active = draft.currency === cur;
                   return (
                     <TouchableOpacity
@@ -314,15 +295,13 @@ export default function ExpenditureDetailScreen() {
               {detail.inputType && (
                 <View style={styles.metaRow}>
                   <Text style={styles.metaKey}>입력 방식</Text>
-                  <Text style={styles.metaValue}>
-                    {detail.inputType === "OCR" ? "영수증 OCR" : detail.inputType === "MANUAL" ? "직접 입력" : "캡처"}
-                  </Text>
+                  <Text style={styles.metaValue}>{inputTypeLabel(detail.inputType)}</Text>
                 </View>
               )}
               {detail.createdAt && (
                 <View style={styles.metaRow}>
                   <Text style={styles.metaKey}>등록일</Text>
-                  <Text style={styles.metaValue}>{isoToLocal(detail.createdAt)}</Text>
+                  <Text style={styles.metaValue}>{formatDateOnly(detail.createdAt)}</Text>
                 </View>
               )}
               {detail.address && (

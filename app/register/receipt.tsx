@@ -10,7 +10,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
-  Modal,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
@@ -18,27 +17,29 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { styles } from "@/styles/register/receiptStyles";
 import {
-  CATEGORIES,
-  CategoryId,
   formatKRW,
-  getCategory,
 } from "@/constants/mockData";
 import {
-  ApiNotConfiguredError,
-  isServerOcrConfigured,
-  OcrServerError,
   parseReceipt,
-  parseReceiptFromText,
   PaymentMethod,
   ReceiptOcrResult,
   saveTransaction,
 } from "@/services/ocr";
+import { useCategories } from "@/contexts/CategoryContext";
+import { CategoryPicker } from "@/components/category-picker";
+import {
+  getCategoryRecommendation,
+  resolveCategoryRecommendation,
+} from "@/services/api/categoryApi";
+import { expenditureDateParam } from "@/services/api/expenditureApi";
 
 const HITSLOP = { top: 12, bottom: 12, left: 12, right: 12 } as const;
 
-type Step = "idle" | "analyzing" | "review" | "saving";
+function formatAmountInput(value: number): string {
+  return value > 0 ? value.toLocaleString("ko-KR") : "";
+}
 
-type ReceiptItem = { name: string; price: number };
+type Step = "idle" | "analyzing" | "review" | "saving";
 
 type Draft = {
   storeName: string;
@@ -46,12 +47,13 @@ type Draft = {
   purchasedAtIso?: string;
   totalAmount: number;
   paymentMethod: PaymentMethod;
-  category: CategoryId;
-  initialCategory: CategoryId;
+  categoryId: number | null;
+  initialCategoryId: number | null;
   categoryConfidence: number;
-  items: ReceiptItem[];
+  categoryMatchedCount: number;
+  categoryAutoApplied: boolean;
+  userSelectedCategory: boolean;
   memo: string;
-  rawText: string;
   address?: string;
   isManualEntry?: boolean;
 };
@@ -70,15 +72,12 @@ const ANALYSIS_STEPS = [
 ];
 
 export default function ReceiptScreen() {
+  const { categories } = useCategories();
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [step, setStep] = useState<Step>("idle");
   const [draft, setDraft] = useState<Draft | null>(null);
   const [analysisStep, setAnalysisStep] = useState(0);
-  const [showRaw, setShowRaw] = useState(false);
-  const [pasteOpen, setPasteOpen] = useState(false);
-  const [pasteText, setPasteText] = useState("");
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const ocrAvailable = isServerOcrConfigured();
 
   useEffect(() => {
     return () => {
@@ -95,22 +94,25 @@ export default function ReceiptScreen() {
     setDraft(null);
     setStep("idle");
     setAnalysisStep(0);
-    setShowRaw(false);
   };
 
-  const applyOcrResult = (res: ReceiptOcrResult) => {
+  const applyOcrResult = (
+    res: ReceiptOcrResult,
+    recommendation: ReturnType<typeof resolveCategoryRecommendation>
+  ) => {
     setDraft({
       storeName: res.storeName,
       purchasedAt: res.purchasedAt,
       purchasedAtIso: res.purchasedAtIso,
       totalAmount: res.totalAmount,
       paymentMethod: res.paymentMethod,
-      category: res.suggestedCategory,
-      initialCategory: res.suggestedCategory,
-      categoryConfidence: res.categoryConfidence,
-      items: res.items.map((i) => ({ name: i.name, price: i.price })),
+      categoryId: recommendation.selectedCategoryId,
+      initialCategoryId: recommendation.recommendedCategoryId,
+      categoryConfidence: recommendation.confidence,
+      categoryMatchedCount: recommendation.matchedCount,
+      categoryAutoApplied: recommendation.autoApplicable,
+      userSelectedCategory: false,
       memo: "",
-      rawText: res.rawText,
       address: res.location?.address,
       isManualEntry: res.isManualEntry,
     });
@@ -136,35 +138,17 @@ export default function ReceiptScreen() {
         tickRef.current = null;
       }
       setAnalysisStep(ANALYSIS_STEPS.length - 1);
-      applyOcrResult(res);
+      const recommendation = res.storeName
+        ? await getCategoryRecommendation(res.storeName).catch(() => null)
+        : null;
+      const decision = resolveCategoryRecommendation(
+        recommendation,
+        categories
+      );
+      applyOcrResult(res, decision);
     } catch (e) {
       if (tickRef.current) clearInterval(tickRef.current);
       tickRef.current = null;
-      if (e instanceof ApiNotConfiguredError) {
-        Alert.alert(
-          "서버가 아직 연결되지 않았어요",
-          "지금은 영수증 텍스트를 직접 붙여넣어 등록해보시겠어요?",
-          [
-            { text: "취소", style: "cancel", onPress: reset },
-            {
-              text: "텍스트 붙여넣기",
-              onPress: () => {
-                setStep("idle");
-                setPasteOpen(true);
-              },
-            },
-          ]
-        );
-        return;
-      }
-      if (e instanceof OcrServerError) {
-        Alert.alert(
-          "OCR 서버 응답 오류",
-          `${e.message}${e.code ? `\n(code: ${e.code})` : ""}`,
-          [{ text: "확인", onPress: reset }]
-        );
-        return;
-      }
       const msg = (e as Error)?.message ?? "";
       if (msg.startsWith("AUTH_EXPIRED:")) {
         Alert.alert("인증 만료", msg.replace("AUTH_EXPIRED:", ""), [{ text: "확인", onPress: reset }]);
@@ -173,17 +157,6 @@ export default function ReceiptScreen() {
       }
       setStep("idle");
     }
-  };
-
-  const startFromPastedText = () => {
-    const text = pasteText.trim();
-    if (!text) {
-      return Alert.alert("입력 필요", "영수증 텍스트를 붙여넣어 주세요.");
-    }
-    const res = parseReceiptFromText(text);
-    setImageUri(null);
-    setPasteOpen(false);
-    applyOcrResult(res);
   };
 
   const pickFromLibrary = async () => {
@@ -208,37 +181,34 @@ export default function ReceiptScreen() {
   const updateDraft = (patch: Partial<Draft>) =>
     setDraft((prev) => (prev ? { ...prev, ...patch } : prev));
 
-  const updateItem = (idx: number, patch: Partial<ReceiptItem>) => {
+  const reclassifyDraftStore = async () => {
+    const storeName = draft?.storeName.trim();
+    if (!storeName) return;
+
+    const recommendation = await getCategoryRecommendation(storeName).catch(() => null);
+    const decision = resolveCategoryRecommendation(
+      recommendation,
+      categories
+    );
+
     setDraft((prev) => {
       if (!prev) return prev;
+      const userEditedCategory = prev.userSelectedCategory;
       return {
         ...prev,
-        items: prev.items.map((it, i) => (i === idx ? { ...it, ...patch } : it)),
+        categoryId: userEditedCategory ? prev.categoryId : decision.selectedCategoryId,
+        initialCategoryId: decision.recommendedCategoryId,
+        categoryConfidence: userEditedCategory
+          ? prev.categoryConfidence
+          : decision.confidence,
+        categoryMatchedCount: userEditedCategory
+          ? prev.categoryMatchedCount
+          : decision.matchedCount,
+        categoryAutoApplied: userEditedCategory
+          ? false
+          : decision.autoApplicable,
       };
     });
-  };
-
-  const removeItem = (idx: number) => {
-    setDraft((prev) => {
-      if (!prev) return prev;
-      return { ...prev, items: prev.items.filter((_, i) => i !== idx) };
-    });
-  };
-
-  const addItem = () => {
-    setDraft((prev) => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        items: [...prev.items, { name: "", price: 0 }],
-      };
-    });
-  };
-
-  const recomputeTotal = () => {
-    if (!draft) return;
-    const sum = draft.items.reduce((s, it) => s + (it.price || 0), 0);
-    updateDraft({ totalAmount: sum });
   };
 
   const onSave = async () => {
@@ -249,21 +219,37 @@ export default function ReceiptScreen() {
     if (draft.totalAmount <= 0) {
       return Alert.alert("입력 확인", "총 결제금액이 0원 이상이어야 합니다.");
     }
+    if (!draft.categoryId) {
+      return Alert.alert("입력 확인", "카테고리를 선택해주세요.");
+    }
     setStep("saving");
     try {
-      await saveTransaction("receipt", {
-        ...draft,
-        imageUri,
-        userEditedCategory: draft.category !== draft.initialCategory,
-      });
+      await saveTransaction(
+        "receipt",
+        {
+          ...draft,
+          categoryId: draft.userSelectedCategory ? draft.categoryId : undefined,
+          defaultCategoryId: draft.categoryAutoApplied ? draft.categoryId : undefined,
+          imageUri,
+          userEditedCategory: draft.userSelectedCategory,
+        },
+        { requireServerSave: true }
+      );
       Alert.alert("등록 완료", "가계부에 추가되었어요.", [
         {
           text: "확인",
-          onPress: () => router.back(),
+          onPress: () =>
+            router.replace({
+              pathname: "/(tabs)/budget",
+              params: { date: expenditureDateParam(draft.purchasedAtIso) },
+            }),
         },
       ]);
-    } catch {
-      Alert.alert("저장 실패", "잠시 후 다시 시도해주세요.");
+    } catch (error) {
+      Alert.alert(
+        "저장 실패",
+        (error as Error)?.message ?? "잠시 후 다시 시도해주세요."
+      );
       setStep("review");
     }
   };
@@ -271,21 +257,7 @@ export default function ReceiptScreen() {
 
   if (step === "idle" && !imageUri) {
     return (
-      <>
-        <EmptyState
-          onPick={pickFromLibrary}
-          onShoot={takePhoto}
-          onPasteText={() => setPasteOpen(true)}
-          ocrAvailable={ocrAvailable}
-        />
-        <PasteTextModal
-          open={pasteOpen}
-          value={pasteText}
-          onChangeText={setPasteText}
-          onClose={() => setPasteOpen(false)}
-          onConfirm={startFromPastedText}
-        />
-      </>
+      <EmptyState onPick={pickFromLibrary} onShoot={takePhoto} />
     );
   }
 
@@ -360,6 +332,7 @@ export default function ReceiptScreen() {
                 style={styles.input}
                 value={draft?.storeName ?? ""}
                 onChangeText={(v) => updateDraft({ storeName: v })}
+                onEndEditing={() => void reclassifyDraftStore()}
                 placeholder="가맹점명을 입력하세요"
                 placeholderTextColor="#9CA3AF"
               />
@@ -437,102 +410,31 @@ export default function ReceiptScreen() {
                 </View>
               )}
             </View>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ gap: 8 }}
-            >
-              {CATEGORIES.map((c) => {
-                const active = draft?.category === c.id;
-                const isAi = draft?.initialCategory === c.id;
-                return (
-                  <TouchableOpacity
-                    key={c.id}
-                    onPress={() => updateDraft({ category: c.id })}
-                    style={[
-                      styles.catChip,
-                      active && {
-                        backgroundColor: `${c.color}1A`,
-                        borderColor: c.color,
-                      },
-                    ]}
-                  >
-                    <Ionicons
-                      name={c.icon}
-                      size={14}
-                      color={active ? c.color : "#6B7280"}
-                    />
-                    <Text
-                      style={[
-                        styles.catChipText,
-                        active && { color: c.color, fontWeight: "700" },
-                      ]}
-                    >
-                      {c.label}
-                    </Text>
-                    {isAi && !active && (
-                      <View style={styles.aiDot} />
-                    )}
-                  </TouchableOpacity>
-                );
+            <CategoryPicker
+              selectedId={draft?.categoryId ?? null}
+              recommendedCategoryId={draft?.initialCategoryId}
+              onSelect={(categoryId) => updateDraft({
+                categoryId,
+                categoryAutoApplied: false,
+                userSelectedCategory: true,
               })}
-            </ScrollView>
-            {draft && draft.category !== draft.initialCategory && (
+            />
+            {draft?.initialCategoryId && !draft.userSelectedCategory && (
+              <Text style={styles.inputHint}>
+                {draft.categoryAutoApplied
+                  ? `선택 이력 ${draft.categoryMatchedCount}회 · 자동 적용`
+                  : `선택 이력 ${draft.categoryMatchedCount}회 · 추천 카테고리를 확인해 주세요.`}
+              </Text>
+            )}
+            {draft?.userSelectedCategory && draft.categoryId !== draft.initialCategoryId && (
               <View style={styles.feedbackBox}>
                 <Ionicons name="bulb-outline" size={14} color="#7C3AED" />
                 <Text style={styles.feedbackText}>
-                  수정한 분류({getCategory(draft.category).label})를 기억하고
+                  수정한 분류({categories.find((category) => category.categoryId === draft.categoryId)?.name})를 기억하고
                   같은 매장에 자동 적용해요.
                 </Text>
               </View>
             )}
-          </View>
-
-          {/* 품목 */}
-          <View style={styles.card}>
-            <View style={styles.cardLabelRow}>
-              <Text style={styles.cardLabel}>품목</Text>
-              <TouchableOpacity
-                onPress={recomputeTotal}
-                style={styles.tinyBtn}
-              >
-                <Ionicons name="calculator-outline" size={12} color="#3B82F6" />
-                <Text style={styles.tinyBtnText}>합계 다시 계산</Text>
-              </TouchableOpacity>
-            </View>
-            {draft?.items.map((it, idx) => (
-              <View key={idx} style={styles.itemRow}>
-                <TextInput
-                  style={[styles.input, styles.itemNameInput]}
-                  value={it.name}
-                  onChangeText={(v) => updateItem(idx, { name: v })}
-                  placeholder="품목명"
-                  placeholderTextColor="#9CA3AF"
-                />
-                <TextInput
-                  style={[styles.input, styles.itemPriceInput]}
-                  value={it.price ? String(it.price) : ""}
-                  onChangeText={(v) =>
-                    updateItem(idx, {
-                      price: parseInt(v.replace(/[^0-9]/g, ""), 10) || 0,
-                    })
-                  }
-                  keyboardType="number-pad"
-                  placeholder="0"
-                  placeholderTextColor="#9CA3AF"
-                />
-                <TouchableOpacity
-                  onPress={() => removeItem(idx)}
-                  style={styles.removeBtn}
-                >
-                  <Ionicons name="close" size={16} color="#EF4444" />
-                </TouchableOpacity>
-              </View>
-            ))}
-            <TouchableOpacity onPress={addItem} style={styles.addItemBtn}>
-              <Ionicons name="add" size={16} color="#3B82F6" />
-              <Text style={styles.addItemText}>품목 추가</Text>
-            </TouchableOpacity>
           </View>
 
           {/* 총액 */}
@@ -540,7 +442,7 @@ export default function ReceiptScreen() {
             <Text style={styles.totalLabel}>총 결제금액</Text>
             <TextInput
               style={styles.totalInput}
-              value={draft ? String(draft.totalAmount) : ""}
+              value={draft ? formatAmountInput(draft.totalAmount) : ""}
               onChangeText={(v) =>
                 updateDraft({
                   totalAmount: parseInt(v.replace(/[^0-9]/g, ""), 10) || 0,
@@ -564,24 +466,6 @@ export default function ReceiptScreen() {
               placeholderTextColor="#9CA3AF"
             />
           </View>
-
-          {/* 원본 텍스트 */}
-          <TouchableOpacity
-            onPress={() => setShowRaw((s) => !s)}
-            style={styles.rawToggle}
-          >
-            <Ionicons
-              name={showRaw ? "chevron-up" : "chevron-down"}
-              size={16}
-              color="#6B7280"
-            />
-            <Text style={styles.rawToggleText}>OCR 원본 텍스트 보기</Text>
-          </TouchableOpacity>
-          {showRaw && draft?.rawText && (
-            <View style={styles.rawBox}>
-              <Text style={styles.rawText}>{draft.rawText}</Text>
-            </View>
-          )}
 
           <View style={{ height: 100 }} />
         </ScrollView>
@@ -628,13 +512,9 @@ function Field({
 function EmptyState({
   onPick,
   onShoot,
-  onPasteText,
-  ocrAvailable,
 }: {
   onPick: () => void;
   onShoot: () => void;
-  onPasteText: () => void;
-  ocrAvailable: boolean;
 }) {
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
@@ -676,81 +556,14 @@ function EmptyState({
           <Text style={styles.bigSecondaryText}>앨범에서 선택</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.bigGhost} onPress={onPasteText}>
-          <Ionicons name="document-text-outline" size={18} color="#6B7280" />
-          <Text style={styles.bigGhostText}>
-            {ocrAvailable
-              ? "텍스트로 등록 (사진 없이)"
-              : "텍스트 붙여넣기로 등록"}
-          </Text>
-        </TouchableOpacity>
-
         <View style={styles.tipBox}>
           <Ionicons name="information-circle-outline" size={16} color="#6B7280" />
           <Text style={styles.tipBoxText}>
-            {ocrAvailable
-              ? "영수증이 잘 나오게 평평하게 펴서 모서리가 모두 보이도록 찍어주세요."
-              : "서버가 아직 연결되지 않았어요. 그동안은 '텍스트 붙여넣기'로 테스트할 수 있어요."}
+            영수증이 잘 나오게 평평하게 펴서 모서리가 모두 보이도록 찍어주세요.
           </Text>
         </View>
       </ScrollView>
     </SafeAreaView>
-  );
-}
-
-function PasteTextModal({
-  open,
-  value,
-  onChangeText,
-  onClose,
-  onConfirm,
-}: {
-  open: boolean;
-  value: string;
-  onChangeText: (v: string) => void;
-  onClose: () => void;
-  onConfirm: () => void;
-}) {
-  return (
-    <Modal
-      visible={open}
-      animationType="slide"
-      transparent
-      onRequestClose={onClose}
-    >
-      <View style={styles.modalBackdrop}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
-          style={styles.modalCard}
-        >
-          <View style={styles.modalHead}>
-            <Text style={styles.modalTitle}>영수증 텍스트 붙여넣기</Text>
-            <TouchableOpacity onPress={onClose} hitSlop={HITSLOP}>
-              <Ionicons name="close" size={22} color="#111827" />
-            </TouchableOpacity>
-          </View>
-          <Text style={styles.modalSub}>
-            영수증/문자에 적혀 있는 텍스트를 그대로 붙여넣으면, 가맹점·금액·품목을
-            자동으로 분리해 채워드려요.
-          </Text>
-          <TextInput
-            multiline
-            value={value}
-            onChangeText={onChangeText}
-            placeholder={
-              "예)\n스타벅스 강남R점\n2026-04-29 18:42\n아메리카노 T  4,500\n카야토스트   4,500\n합계  9,000\n결제수단: 카드"
-            }
-            placeholderTextColor="#9CA3AF"
-            style={styles.modalInput}
-            textAlignVertical="top"
-          />
-          <TouchableOpacity onPress={onConfirm} style={styles.modalConfirm}>
-            <Ionicons name="sparkles" size={16} color="#FFFFFF" />
-            <Text style={styles.modalConfirmText}>분석해서 채우기</Text>
-          </TouchableOpacity>
-        </KeyboardAvoidingView>
-      </View>
-    </Modal>
   );
 }
 

@@ -1,4 +1,3 @@
-import type { CategoryId } from "@/constants/mockData";
 import type {
   CapturePayment,
   CaptureSource,
@@ -49,31 +48,6 @@ const NOISE_LINES = [
   /고객센터/,
   /^[\-_=*~]+$/,
   /^[ㄱ-ㅎㅏ-ㅣ가-힣]\*+[ㄱ-ㅎㅏ-ㅣ가-힣]*님$/, // "홍*동님"
-];
-
-/* 카테고리 키워드 — 서버 6개 카테고리 기준 */
-const CATEGORY_KEYWORDS: Array<{ id: CategoryId; words: RegExp }> = [
-  {
-    id: "food",
-    words:
-      /스타벅스|투썸|이디야|커피빈|할리스|폴바셋|메가커피|컴포즈|빽다방|커피|카페|파리바게뜨|뚜레쥬르|식당|분식|국밥|김밥|버거|치킨|피자|돈까스|초밥|스시|라멘|족발|보쌈|곱창|삼겹|갈비|냉면|덮밥|배달의민족|쿠팡이츠|요기요|GS25|CU|세븐일레븐|이마트24/i,
-  },
-  {
-    id: "transport",
-    words: /지하철|버스|택시|카카오\s*T|티머니|교통|주유|GS칼텍스|SK에너지|S-OIL|KTX|기차|항공|공항|주차/i,
-  },
-  {
-    id: "shopping",
-    words: /이마트|홈플러스|롯데마트|코스트코|올리브영|다이소|쿠팡|11번가|G마켓|SSG|교보문고|예스24/i,
-  },
-  {
-    id: "culture",
-    words: /CGV|메가박스|롯데시네마|넷플릭스|왓챠|티빙|디즈니|콘서트|공연/i,
-  },
-  {
-    id: "health",
-    words: /약국|병원|의원|치과|안과|한의원|클리닉|헬스|피트니스|gym/i,
-  },
 ];
 
 /* 메인 파서 */
@@ -162,9 +136,6 @@ function parseSingleBlock(block: string[]): CapturePayment | null {
   // 결제 수단
   const method = pickMethod(text);
 
-  // 카테고리 추정
-  const category = guessCategoryFromText(`${store ?? ""}\n${text}`);
-
   // 신뢰도 
   let confidence = 0.6;
   if (store) confidence += 0.2;
@@ -176,7 +147,6 @@ function parseSingleBlock(block: string[]): CapturePayment | null {
     amount,
     paidAt,
     method,
-    category,
     confidence,
   };
 }
@@ -275,13 +245,6 @@ function labelForSource(src: CaptureSource): string {
     default:
       return "결제 알림";
   }
-}
-
-function guessCategoryFromText(haystack: string): CategoryId {
-  for (const c of CATEGORY_KEYWORDS) {
-    if (c.words.test(haystack)) return c.id;
-  }
-  return "etc";
 }
 
 function parsePrice(token: string): number | null {

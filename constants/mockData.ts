@@ -13,13 +13,13 @@ export type CategoryId =
   | "etc";
 
 export type Category = {
-  id: CategoryId;
+  id: string;
   label: string;
   color: string;
   icon: IoniconName;
 };
 
-export const CATEGORIES: Category[] = [
+export const CATEGORIES: (Category & { id: CategoryId })[] = [
   { id: "food",      label: "식비",      color: "#F97316", icon: "restaurant-outline" },
   { id: "transport", label: "교통",      color: "#3B82F6", icon: "bus-outline" },
   { id: "shopping",  label: "쇼핑",      color: "#EC4899", icon: "bag-handle-outline" },
@@ -28,8 +28,47 @@ export const CATEGORIES: Category[] = [
   { id: "etc",       label: "기타",      color: "#6B7280", icon: "ellipsis-horizontal" },
 ];
 
-export const getCategory = (id: CategoryId): Category =>
-  CATEGORIES.find((c) => c.id === id) ?? CATEGORIES[CATEGORIES.length - 1];
+const CUSTOM_CATEGORY_COLORS = [
+  "#8B5CF6",
+  "#06B6D4",
+  "#84CC16",
+  "#F59E0B",
+  "#6366F1",
+  "#14B8A6",
+];
+
+function customCategoryVisual(id: string, label: string): Category {
+  const hash = [...label].reduce((sum, char) => sum + (char.codePointAt(0) ?? 0), 0);
+  return {
+    id,
+    label,
+    color: CUSTOM_CATEGORY_COLORS[hash % CUSTOM_CATEGORY_COLORS.length],
+    icon: "pricetag-outline",
+  };
+}
+
+export const getCategory = (id: string, label?: string): Category => {
+  const builtIn = CATEGORIES.find((category) => category.id === id);
+  if (builtIn) return builtIn;
+  const customLabel = label?.trim() || id.replace(/^custom:/, "") || "미분류";
+  return customCategoryVisual(id, customLabel);
+};
+
+export function getCategoryByName(name: string): Category {
+  const n = name.trim();
+  const aliases: Record<string, CategoryId> = {
+    "식비": "food", food: "food",
+    "교통": "transport", transport: "transport",
+    "쇼핑": "shopping", shopping: "shopping",
+    "문화/여가": "culture", "문화": "culture", "여가": "culture", culture: "culture",
+    "건강/의료": "health", "건강": "health", "의료": "health", health: "health",
+    "기타": "etc", etc: "etc",
+  };
+  const builtInId = aliases[n] ?? aliases[n.toLocaleLowerCase("ko-KR")];
+  return builtInId
+    ? getCategory(builtInId)
+    : customCategoryVisual(`custom:${n.toLocaleLowerCase("ko-KR")}`, n || "미분류");
+}
 
 export type Transaction = {
   id: string;
@@ -334,7 +373,7 @@ export const AI_SUGGESTED_QUESTIONS = [
   "회사 주변 점심 평균값은?",
 ];
 
-/* 카테고리 자동학습 상태 */
+/* 홈 화면 자동학습 상태 */
 export const CATEGORIZATION_STATS = {
   autoMatched: 42,
   userCorrected: 6,
@@ -364,10 +403,35 @@ export const AI_INSIGHTS = [
   },
 ];
 
-/* 이번 달 예산 */
-export const MONTHLY_BUDGET = 600000;
-
 export const formatKRW = (n: number) => `${n.toLocaleString("ko-KR")}원`;
+
+const CURRENCY_LOCALES: Record<string, string> = {
+  KRW: "ko-KR",
+  USD: "en-US",
+  EUR: "de-DE",
+  JPY: "ja-JP",
+};
+
+/** 통화권의 천 단위 구분 규칙으로 금액 숫자를 표시합니다. */
+export function formatCurrencyAmount(amount: number, currency = "KRW"): string {
+  const locale = CURRENCY_LOCALES[currency.toUpperCase()] ?? "en-US";
+  return new Intl.NumberFormat(locale, {
+    maximumFractionDigits: 0,
+  }).format(amount);
+}
+
+/** 통화별 기호와 해당 통화권의 구분 규칙을 함께 적용합니다. */
+export function formatCurrency(amount: number, currency = "KRW"): string {
+  const normalizedCurrency = currency.toUpperCase();
+  const locale = CURRENCY_LOCALES[normalizedCurrency] ?? "en-US";
+  return new Intl.NumberFormat(locale, {
+    style: "currency",
+    currency: normalizedCurrency,
+    currencyDisplay: "narrowSymbol",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(amount);
+}
 
 export const formatTime = (iso: string) => {
   const d = new Date(iso);
