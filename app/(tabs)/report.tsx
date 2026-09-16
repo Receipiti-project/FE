@@ -6,6 +6,7 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
+  TextInput,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -16,7 +17,7 @@ import {
   getCategory,
 } from "@/constants/mockData";
 import { useExpenditures } from "@/hooks/useExpenditures";
-import { MonthlyAiReport } from "@/components/report/monthly-ai-report";
+import { answerReportQuestion } from "@/services/reportAssistant";
 
 const RANGES = ["이번주", "이번달"] as const;
 type Range = (typeof RANGES)[number];
@@ -29,8 +30,22 @@ function currentWeekStart(): string {
   return d.toISOString().slice(0, 10);
 }
 
+function formatTrendAmount(amount: number): string {
+  if (amount >= 10_000) {
+    const value = Math.round((amount / 10_000) * 10) / 10;
+    return `${value.toLocaleString("ko-KR")}만원`;
+  }
+  if (amount >= 1_000) {
+    const value = Math.round((amount / 1_000) * 10) / 10;
+    return `${value.toLocaleString("ko-KR")}천원`;
+  }
+  return `${Math.round(amount).toLocaleString("ko-KR")}원`;
+}
+
 export default function ReportScreen() {
   const [range, setRange] = useState<Range>("이번달");
+  const [question, setQuestion] = useState("");
+  const [answer, setAnswer] = useState<string | null>(null);
 
   const {
     loading,
@@ -106,6 +121,13 @@ export default function ReportScreen() {
   const maxDow = Math.max(...dow.map((d) => d.total), 1);
   const peakTod = tod.reduce((a, b) => (a.total > b.total ? a : b));
 
+  const askQuestion = (nextQuestion = question) => {
+    const trimmed = nextQuestion.trim();
+    if (!trimmed) return;
+    setQuestion(trimmed);
+    setAnswer(answerReportQuestion(trimmed, filteredItems, range));
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <ScrollView contentContainerStyle={styles.scroll}>
@@ -150,7 +172,10 @@ export default function ReportScreen() {
             return (
               <TouchableOpacity
                 key={r}
-                onPress={() => setRange(r)}
+                onPress={() => {
+                  setRange(r);
+                  setAnswer(null);
+                }}
                 style={[styles.rangeChip, active && styles.rangeChipActive]}
               >
                 <Text style={[styles.rangeChipText, active && styles.rangeChipTextActive]}>
@@ -197,8 +222,14 @@ export default function ReportScreen() {
                   const isToday = d.label === "오늘";
                   return (
                     <View key={d.date} style={styles.barCol}>
-                      <Text style={styles.barValue}>
-                        {d.total > 0 ? `${Math.round(d.total / 1000)}k` : ""}
+                      <Text
+                        style={styles.barValue}
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                        minimumFontScale={0.72}
+                        accessibilityLabel={d.total > 0 ? formatKRW(d.total) : undefined}
+                      >
+                        {d.total > 0 ? formatTrendAmount(d.total) : ""}
                       </Text>
                       <View style={styles.barTrack}>
                         <View
@@ -339,17 +370,45 @@ export default function ReportScreen() {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.chatTitle}>AI에게 물어보기</Text>
-                <Text style={styles.chatSub}>자연어로 소비 내역을 검색하고 분석해보세요</Text>
+                <Text style={styles.chatSub}>현재 지출 데이터를 기기에서 바로 분석해요</Text>
               </View>
+            </View>
+            <View style={styles.chatInputRow}>
+              <TextInput
+                value={question}
+                onChangeText={setQuestion}
+                onSubmitEditing={() => askQuestion()}
+                placeholder="예: 가장 많이 쓴 카테고리는?"
+                placeholderTextColor="#818CF8"
+                returnKeyType="send"
+                style={styles.chatInput}
+              />
+              <TouchableOpacity
+                accessibilityLabel="질문하기"
+                disabled={!question.trim()}
+                onPress={() => askQuestion()}
+                style={[styles.chatSendButton, !question.trim() && styles.chatSendButtonDisabled]}
+              >
+                <Ionicons name="send" size={15} color="#FFFFFF" />
+              </TouchableOpacity>
             </View>
             <View style={styles.chatPromptList}>
               {AI_SUGGESTED_QUESTIONS.map((q) => (
-                <TouchableOpacity key={q} style={styles.chatPrompt}>
+                <TouchableOpacity key={q} onPress={() => askQuestion(q)} style={styles.chatPrompt}>
                   <Text style={styles.chatPromptText}>{q}</Text>
                   <Ionicons name="arrow-forward" size={14} color="#7C3AED" />
                 </TouchableOpacity>
               ))}
             </View>
+            {!!answer && (
+              <View style={styles.chatAnswer}>
+                <View style={styles.chatAnswerTitleRow}>
+                  <Ionicons name="sparkles-outline" size={14} color="#C4B5FD" />
+                  <Text style={styles.chatAnswerTitle}>분석 답변</Text>
+                </View>
+                <Text style={styles.chatAnswerText}>{answer}</Text>
+              </View>
+            )}
           </View>
         </View>
 
@@ -470,8 +529,16 @@ const styles = StyleSheet.create({
   chatBadge: { width: 32, height: 32, borderRadius: 16, backgroundColor: "#7C3AED", alignItems: "center", justifyContent: "center" },
   chatTitle: { color: "#FFFFFF", fontWeight: "700", fontSize: 14 },
   chatSub: { color: "#A5B4FC", fontSize: 11, marginTop: 2, lineHeight: 16 },
+  chatInputRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 14 },
+  chatInput: { flex: 1, minHeight: 42, borderRadius: 12, paddingHorizontal: 12, color: "#FFFFFF", backgroundColor: "rgba(255,255,255,0.08)", borderWidth: 1, borderColor: "rgba(255,255,255,0.12)", fontSize: 12 },
+  chatSendButton: { width: 42, height: 42, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: "#7C3AED" },
+  chatSendButtonDisabled: { opacity: 0.4 },
   chatPromptList: { gap: 8, marginTop: 14 },
   chatPrompt: { flexDirection: "row", alignItems: "center", backgroundColor: "rgba(255,255,255,0.06)", borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderColor: "rgba(255,255,255,0.08)" },
   chatPromptText: { color: "#E0E7FF", fontSize: 12, fontWeight: "600", flex: 1 },
+  chatAnswer: { marginTop: 12, borderRadius: 12, padding: 12, backgroundColor: "rgba(124,58,237,0.2)", borderWidth: 1, borderColor: "rgba(196,181,253,0.24)" },
+  chatAnswerTitleRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  chatAnswerTitle: { color: "#C4B5FD", fontSize: 11, fontWeight: "700" },
+  chatAnswerText: { color: "#F5F3FF", fontSize: 12, lineHeight: 19, marginTop: 7 },
   emptyText: { color: "#9CA3AF", fontSize: 13, textAlign: "center" },
 });
