@@ -236,6 +236,7 @@ export default function ReceiptScreen() {
         {
           ...draft,
           categoryId: draft.userSelectedCategory ? draft.categoryId : undefined,
+          defaultCategoryId: draft.categoryAutoApplied ? draft.categoryId : undefined,
           imageUri,
           userEditedCategory: draft.userSelectedCategory,
         },

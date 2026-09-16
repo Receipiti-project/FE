@@ -109,6 +109,7 @@ export default function ManualScreen() {
     try {
       await createExpenditure({
         categoryId: form.userEditedCategory ? form.categoryId! : undefined,
+        defaultCategoryId: form.categoryAutoApplied ? form.categoryId! : undefined,
         storeName: form.storeName.trim(),
         amount,
         expenditureDate: datetimeLocalToIso(form.expenditureDate),

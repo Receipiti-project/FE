@@ -161,6 +161,16 @@ type SaveTransactionOptions = {
   requireServerSave?: boolean;
 };
 
+function inputTypeForSource(
+  source: SavedDraft["source"]
+): "OCR" | "VOICE" | "MANUAL" | "SMS" | "CAPTURE" {
+  if (source === "receipt") return "OCR";
+  if (source === "capture") return "CAPTURE";
+  if (source === "voice") return "VOICE";
+  if (source === "sms") return "SMS";
+  return "MANUAL";
+}
+
 const _drafts: SavedDraft[] = [];
 
 type ReceiptSavePayload = {
@@ -169,6 +179,7 @@ type ReceiptSavePayload = {
   purchasedAtIso?: string;
   totalAmount: number;
   categoryId?: number;
+  defaultCategoryId?: number;
   memo?: string;
   [key: string]: unknown;
 };
@@ -179,6 +190,7 @@ type CaptureSavePayload = {
   paidAt?: string;
   paidAtIso?: string;
   categoryId?: number;
+  defaultCategoryId?: number;
   currency?: string;
   memo?: string;
   [key: string]: unknown;
@@ -204,14 +216,18 @@ export async function saveTransaction(
           })()
         : nowLocalIso());
 
-      const res = await createExpenditure({
-        categoryId: d.categoryId,
-        storeName: d.storeName ?? "",
-        amount: d.totalAmount ?? 0,
-        expenditureDate,
-        memo: d.memo ?? "",
-        currency: "KRW",
-      });
+      const res = await createExpenditure(
+        {
+          categoryId: d.categoryId,
+          defaultCategoryId: d.defaultCategoryId,
+          storeName: d.storeName ?? "",
+          amount: d.totalAmount ?? 0,
+          expenditureDate,
+          memo: d.memo ?? "",
+          currency: "KRW",
+        },
+        inputTypeForSource(source)
+      );
       expenditureId = res.expenditureId;
     } catch (e) {
       if (options.requireServerSave) throw e;
@@ -258,14 +274,18 @@ export async function saveTransactions(
             })()
           : nowLocalIso());
 
-        const res = await createExpenditure({
-          categoryId: d.categoryId,
-          storeName: d.store ?? "",
-          amount: d.amount ?? 0,
-          expenditureDate,
-          memo: d.memo ?? "",
-          currency: d.currency ?? "KRW",
-        });
+        const res = await createExpenditure(
+          {
+            categoryId: d.categoryId,
+            defaultCategoryId: d.defaultCategoryId,
+            storeName: d.store ?? "",
+            amount: d.amount ?? 0,
+            expenditureDate,
+            memo: d.memo ?? "",
+            currency: d.currency ?? "KRW",
+          },
+          inputTypeForSource(source)
+        );
         expenditureId = res.expenditureId;
       } catch (e) {
         if (options.requireServerSave) throw e;

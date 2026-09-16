@@ -50,6 +50,28 @@ function isoToLocal(iso: string): string {
   }
 }
 
+function formatDateOnly(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  return date.toLocaleDateString("ko-KR", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+}
+
+const INPUT_TYPE_LABEL: Record<ExpenditureDetail["inputType"], string> = {
+  OCR: "영수증 OCR",
+  VOICE: "음성 입력",
+  MANUAL: "직접 입력",
+  SMS: "문자 파싱",
+  CAPTURE: "카드 알림 캡처",
+};
+
+function inputTypeLabel(inputType: ExpenditureDetail["inputType"]): string {
+  return INPUT_TYPE_LABEL[inputType] ?? inputType;
+}
+
 function toEditDraft(detail: ExpenditureDetail): EditDraft {
   return {
     storeName: detail.storeName ?? "",
@@ -276,15 +298,13 @@ export default function ExpenditureDetailScreen() {
               {detail.inputType && (
                 <View style={styles.metaRow}>
                   <Text style={styles.metaKey}>입력 방식</Text>
-                  <Text style={styles.metaValue}>
-                    {detail.inputType === "OCR" ? "영수증 OCR" : detail.inputType === "MANUAL" ? "직접 입력" : "캡처"}
-                  </Text>
+                  <Text style={styles.metaValue}>{inputTypeLabel(detail.inputType)}</Text>
                 </View>
               )}
               {detail.createdAt && (
                 <View style={styles.metaRow}>
                   <Text style={styles.metaKey}>등록일</Text>
-                  <Text style={styles.metaValue}>{isoToLocal(detail.createdAt)}</Text>
+                  <Text style={styles.metaValue}>{formatDateOnly(detail.createdAt)}</Text>
                 </View>
               )}
               {detail.address && (

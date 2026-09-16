@@ -5,6 +5,11 @@ import {
   isApiConfigured,
 } from "@/services/api/config";
 import { prepareImageForUpload } from "@/services/imageUpload";
+import {
+  ClientExpenditureInputType,
+  getExpenditureInputType,
+  saveExpenditureInputType,
+} from "@/services/expenditureMetadata";
 
 /* ─── 응답/요청 타입 ─── */
 
@@ -64,6 +69,8 @@ export type MonthlyExpenditureResponse = {
 export type CreateExpenditureDto = {
   /** 사용자가 직접 카테고리를 선택한 경우에만 전달 */
   categoryId?: number;
+  /** 개인화 추천을 자동 적용할 때 서버 분류의 폴백으로 전달 */
+  defaultCategoryId?: number;
   storeName: string;
   businessCategory?: string;
   amount: number;
@@ -97,7 +104,7 @@ export type ExpenditureDetail = {
   expenditureDate: string;
   memo?: string;
   currency: string;
-  inputType: "OCR" | "MANUAL" | "CAPTURE";
+  inputType: "OCR" | "VOICE" | "MANUAL" | "SMS" | "CAPTURE";
   createdAt: string;
   address?: string;
   imageUrl?: string;
@@ -232,7 +239,8 @@ export function analyzeCardNotification(
  * 지출 내역 저장 (직접 입력 / OCR 리뷰 확인 후)
  */
 export async function createExpenditure(
-  dto: CreateExpenditureDto
+  dto: CreateExpenditureDto,
+  inputType: ClientExpenditureInputType = "MANUAL"
 ): Promise<CreateExpenditureResponse> {
   if (!isApiConfigured()) {
     throw new Error("API_BASE_URL 이 설정되지 않았습니다.");
@@ -257,7 +265,9 @@ export async function createExpenditure(
     throw new Error(`지출 저장 실패 (HTTP ${res.status})${text ? `: ${text}` : ""}`);
   }
 
-  return res.json() as Promise<CreateExpenditureResponse>;
+  const created = await res.json() as CreateExpenditureResponse;
+  await saveExpenditureInputType(created.expenditureId, inputType).catch(() => undefined);
+  return created;
 }
 
 /**
@@ -274,7 +284,9 @@ export async function getExpenditure(id: number): Promise<ExpenditureDetail> {
     throw new Error(`지출 조회 실패 (HTTP ${res.status})`);
   }
 
-  return res.json() as Promise<ExpenditureDetail>;
+  const detail = await res.json() as ExpenditureDetail;
+  const clientInputType = await getExpenditureInputType(id).catch(() => null);
+  return clientInputType ? { ...detail, inputType: clientInputType } : detail;
 }
 
 /**

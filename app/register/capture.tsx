@@ -265,6 +265,7 @@ export default function CaptureScreen() {
           paidAtIso: d.paidAtIso,
           method: d.method,
           categoryId: d.userSelectedCategory ? d.categoryId : undefined,
+          defaultCategoryId: d.categoryAutoApplied ? d.categoryId : undefined,
           currency: d.currency,
           address: d.address,
           imageUri,

@@ -33,6 +33,8 @@ export function resolveRecommendedCategoryId(
   categories: CategoryApiItem[]
 ): number | null {
   if (!recommendation) return null;
+  // 추천 응답이 카테고리 목록보다 먼저 도착해도 자동 선택 상태를 유지합니다.
+  if (categories.length === 0) return recommendation.categoryId;
   return categories.some(
     (category) => category.categoryId === recommendation.categoryId
   )
