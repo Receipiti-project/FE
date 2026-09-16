@@ -9,6 +9,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
 import {
   AI_SUGGESTED_QUESTIONS,
   formatKRW,
@@ -116,7 +117,33 @@ export default function ReportScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* 기간 선택 */}
+        {/* 월간 AI 리포트 진입 */}
+        <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel="월간 소비 리포트 열기"
+          onPress={() => router.push("/report/monthly-ai")}
+          style={styles.aiReportHero}
+        >
+          <View style={styles.aiReportHeroIcon}>
+            <Ionicons name="sparkles" size={21} color="#FFFFFF" />
+          </View>
+          <View style={styles.aiReportHeroCopy}>
+            <Text style={styles.aiReportHeroTitle}>월간 소비 리포트</Text>
+            <Text style={styles.aiReportHeroDescription}>
+              원하는 월을 선택해 소비 패턴과 인사이트를 확인하세요
+            </Text>
+          </View>
+          <View style={styles.aiReportHeroAction}>
+            <Ionicons name="chevron-forward" size={19} color="#FFFFFF" />
+          </View>
+        </TouchableOpacity>
+
+        <View style={styles.statisticsHeader}>
+          <Text style={styles.statisticsTitle}>기간별 소비 통계</Text>
+          <Text style={styles.statisticsDescription}>조회할 기간을 선택하세요</Text>
+        </View>
+
+        {/* 통계 기간 선택 */}
         <View style={styles.rangeRow}>
           {RANGES.map((r) => {
             const active = r === range;
@@ -154,9 +181,6 @@ export default function ReportScreen() {
             </View>
           </View>
         </View>
-
-        {/* 선택한 월을 서버 AI 리포트 API로 분석 */}
-        <MonthlyAiReport />
 
         {/* 주간/일별 트렌드 */}
         <View style={styles.section}>
@@ -377,6 +401,15 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 },
   headerTitle: { fontSize: 22, fontWeight: "700", color: "#111827" },
   iconBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: "#FFFFFF", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#F3F4F6" },
+  aiReportHero: { flexDirection: "row", alignItems: "center", gap: 13, padding: 17, borderRadius: 20, backgroundColor: "#312E81", shadowColor: "#312E81", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.18, shadowRadius: 12, elevation: 5 },
+  aiReportHeroIcon: { width: 44, height: 44, borderRadius: 14, alignItems: "center", justifyContent: "center", backgroundColor: "#7C3AED" },
+  aiReportHeroCopy: { flex: 1 },
+  aiReportHeroTitle: { color: "#FFFFFF", fontSize: 17, fontWeight: "800" },
+  aiReportHeroDescription: { color: "#C7D2FE", fontSize: 11, lineHeight: 16, marginTop: 4 },
+  aiReportHeroAction: { width: 32, height: 32, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.1)" },
+  statisticsHeader: { marginTop: 26, marginBottom: 10 },
+  statisticsTitle: { color: "#111827", fontSize: 16, fontWeight: "800" },
+  statisticsDescription: { color: "#9CA3AF", fontSize: 11, marginTop: 3 },
   rangeRow: { flexDirection: "row", backgroundColor: "#F3F4F6", borderRadius: 12, padding: 4, marginBottom: 16 },
   rangeChip: { flex: 1, paddingVertical: 8, borderRadius: 8, alignItems: "center" },
   rangeChipActive: { backgroundColor: "#FFFFFF" },

@@ -56,7 +56,7 @@ function AnalysisRow({
   );
 }
 
-export function MonthlyAiReport() {
+export function MonthlyAiReport({ showTitle = true }: { showTitle?: boolean }) {
   const currentMonth = useMemo(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
@@ -92,13 +92,15 @@ export function MonthlyAiReport() {
   const category = report?.topCategory;
 
   return (
-    <View style={styles.section}>
-      <View style={styles.sectionTitleRow}>
-        <View style={styles.titleGroup}>
-          <Ionicons name="sparkles-outline" size={17} color="#3B82F6" />
-          <Text style={styles.sectionTitle}>AI 월간 소비 리포트</Text>
+    <View style={[styles.section, !showTitle && styles.embeddedSection]}>
+      {showTitle && (
+        <View style={styles.sectionTitleRow}>
+          <View style={styles.titleGroup}>
+            <Ionicons name="sparkles-outline" size={17} color="#3B82F6" />
+            <Text style={styles.sectionTitle}>AI 월간 소비 리포트</Text>
+          </View>
         </View>
-      </View>
+      )}
 
       <View style={styles.monthCard}>
         <Text style={styles.monthHint}>분석할 월을 선택하세요</Text>
@@ -243,6 +245,7 @@ export function MonthlyAiReport() {
 
 const styles = StyleSheet.create({
   section: { marginTop: 24 },
+  embeddedSection: { marginTop: 0 },
   sectionTitleRow: { marginBottom: 12 },
   titleGroup: { flexDirection: "row", alignItems: "center", gap: 6 },
   sectionTitle: { color: "#111827", fontSize: 15, fontWeight: "700" },

@@ -41,6 +41,7 @@ function RootNavigator() {
         <Stack.Screen name="register/sms" options={{ headerShown: false }} />
         <Stack.Screen name="register/manual" options={{ headerShown: false }} />
         <Stack.Screen name="expenditure/[id]" options={{ headerShown: false }} />
+        <Stack.Screen name="report/monthly-ai" options={{ headerShown: false }} />
         <Stack.Screen name="categories" options={{ headerShown: false }} />
       </Stack>
       <StatusBar style="auto" />
