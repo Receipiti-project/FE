@@ -5,7 +5,11 @@ import {
   RecordingPresets,
   setAudioModeAsync,
 } from 'expo-audio';
-import { CATEGORIES } from '../../constants/mockData';
+import {
+  CATEGORIES,
+  formatCurrency,
+  formatCurrencyAmount,
+} from '../../constants/mockData';
 import { processVoice } from '../../scripts/voicePipeline';
 import {
   missingRequiredFields,
@@ -13,6 +17,7 @@ import {
   resolveExpensePlace,
   ResolvedPlace,
 } from '../../scripts/expenseRegister';
+import { formatIsoToKorean } from '../../services/api/expenditureApi';
 import PlacePicker from '../../components/location/PlacePicker';
 import { Place } from '../../scripts/placeSearch';
 import {
@@ -32,6 +37,15 @@ import { router } from 'expo-router';
 
 const HITSLOP = { top: 12, bottom: 12, left: 12, right: 12 } as const;
 const ACCENT = '#EF4444';
+const CURRENCY_OPTIONS = ['KRW', 'USD', 'EUR', 'JPY'] as const;
+type Currency = (typeof CURRENCY_OPTIONS)[number];
+
+function normalizeCurrency(value?: string | null): Currency {
+  const normalized = value?.toUpperCase();
+  return CURRENCY_OPTIONS.includes(normalized as Currency)
+    ? (normalized as Currency)
+    : 'KRW';
+}
 
 type VoiceData = {
   amount: number | null;
@@ -39,6 +53,7 @@ type VoiceData = {
   paymentDate: string | null;
   category: string | null;
   memo: string | null;
+  currency: Currency;
 };
 
 export default function VoiceScreen() {
@@ -99,6 +114,7 @@ export default function VoiceScreen() {
         setVoiceData({
           ...(pipe.data as VoiceData),
           storeName: found?.placeName ?? pipe.data.storeName,
+          currency: normalizeCurrency(pipe.data.currency),
         });
         await audioRecorder.prepareToRecordAsync();
       } catch (e: any) {
@@ -245,29 +261,67 @@ export default function VoiceScreen() {
         {voiceData && (
           <View style={styles.card}>
             <Text style={styles.cardLabel}>인식 결과</Text>
-            <FieldEditable
-              label="결제금액"
-              value={voiceData.amount != null ? String(voiceData.amount) : ''}
-              onChange={(v) =>
-                updateVoiceData({
-                  amount: v === '' ? null : parseInt(v.replace(/[^0-9]/g, ''), 10) || 0,
-                })
-              }
-              placeholder="0"
-              keyboardType="number-pad"
-            />
+            <View style={styles.fieldBlock}>
+              <Text style={styles.fieldLabel}>결제금액</Text>
+              <TextInput
+                style={styles.input}
+                value={
+                  voiceData.amount != null
+                    ? formatCurrencyAmount(voiceData.amount, voiceData.currency)
+                    : ''
+                }
+                onChangeText={(value) => {
+                  const digits = value.replace(/[^0-9]/g, '');
+                  updateVoiceData({ amount: digits ? Number(digits) : null });
+                }}
+                placeholder="0"
+                placeholderTextColor="#9CA3AF"
+                keyboardType="number-pad"
+              />
+              <View style={styles.currencyRow}>
+                {CURRENCY_OPTIONS.map((currency) => {
+                  const active = voiceData.currency === currency;
+                  return (
+                    <TouchableOpacity
+                      key={currency}
+                      onPress={() => updateVoiceData({ currency })}
+                      style={[styles.currencyChip, active && styles.currencyChipActive]}
+                    >
+                      <Text
+                        style={[
+                          styles.currencyText,
+                          active && styles.currencyTextActive,
+                        ]}
+                      >
+                        {currency}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              {voiceData.amount != null && voiceData.amount > 0 && (
+                <Text style={styles.amountPreview}>
+                  {formatCurrency(voiceData.amount, voiceData.currency)}
+                </Text>
+              )}
+            </View>
             <FieldEditable
               label="가게명"
               value={voiceData.storeName ?? ''}
               onChange={(v) => updateVoiceData({ storeName: v || null })}
               placeholder="가게명"
             />
-            <FieldEditable
-              label="결제일시"
-              value={voiceData.paymentDate ?? ''}
-              onChange={(v) => updateVoiceData({ paymentDate: v || null })}
-              placeholder="YYYY-MM-DDTHH:mm:ss"
-            />
+            <View style={styles.fieldBlock}>
+              <Text style={styles.fieldLabel}>결제일시</Text>
+              <View style={styles.paymentDateRow}>
+                <Ionicons name="time-outline" size={17} color="#6B7280" />
+                <Text style={styles.paymentDateText}>
+                  {voiceData.paymentDate
+                    ? formatIsoToKorean(voiceData.paymentDate)
+                    : '결제일시를 인식하지 못했어요'}
+                </Text>
+              </View>
+            </View>
             <View style={{ marginBottom: 12 }}>
               <Text style={styles.fieldLabel}>카테고리</Text>
               <ScrollView
@@ -494,6 +548,51 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     fontWeight: '600',
     marginBottom: 6,
+  },
+  fieldBlock: { marginBottom: 12 },
+  currencyRow: {
+    flexDirection: 'row',
+    gap: 6,
+    flexWrap: 'wrap',
+    marginTop: 8,
+  },
+  currencyChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  currencyChipActive: {
+    backgroundColor: '#EFF6FF',
+    borderColor: '#3B82F6',
+  },
+  currencyText: { color: '#6B7280', fontSize: 12, fontWeight: '600' },
+  currencyTextActive: { color: '#3B82F6', fontWeight: '700' },
+  amountPreview: {
+    textAlign: 'right',
+    color: '#3B82F6',
+    fontWeight: '700',
+    fontSize: 13,
+    marginTop: 6,
+  },
+  paymentDateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minHeight: 44,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#F9FAFB',
+  },
+  paymentDateText: {
+    color: '#111827',
+    fontSize: 14,
+    fontWeight: '600',
   },
   catChip: {
     flexDirection: 'row',
