@@ -1,10 +1,11 @@
 import { CATEGORIES, CategoryId } from '@/constants/mockData';
+import { getCategories } from '@/services/api/categoryApi';
 import {
   CreateExpenditureDto,
   createExpenditure,
   datetimeLocalToIso,
 } from '@/services/api/expenditureApi';
-import { getServerCategoryId } from '@/services/categoryMapping';
+import { ClientExpenditureInputType } from '@/services/expenditureMetadata';
 import { getLocationHint } from './currentLocation';
 import { resolveLocation } from './locationPipeline';
 import { haversineKm, LatLng } from './mapGeo';
@@ -106,11 +107,23 @@ export async function resolveExpensePlace(
   }
 }
 
+async function serverCategoryId(categoryId: CategoryId): Promise<number> {
+  const type = categoryId.toUpperCase();
+  const categories = await getCategories();
+  const match = categories.find((c) => !c.custom && c.categoryType === type);
+  if (!match) throw new Error('카테고리를 찾지 못했어요.');
+  return match.categoryId;
+}
+
+export type RegisterOptions = PlaceLookupOptions & {
+  inputType: ClientExpenditureInputType;
+};
+
 export async function registerExpense(
   draft: ExpenseDraft,
-  rawSms?: string,
-  known?: ResolvedPlace | null,
-  options: PlaceLookupOptions = {}
+  rawSms: string | undefined,
+  known: ResolvedPlace | null | undefined,
+  options: RegisterOptions
 ): Promise<string> {
   const categoryId = toCategoryId(draft.category);
   const amount = draft.amount;
@@ -132,19 +145,22 @@ export async function registerExpense(
 
   const savedName = place?.placeName ?? storeName;
 
-  await createExpenditure({
-    categoryId: getServerCategoryId(categoryId),
-    storeName: savedName,
-    amount,
-    expenditureDate,
-    memo: draft.memo?.trim() || undefined,
-    ...(place && {
-      placeId: place.placeId,
-      address: place.address,
-      latitude: place.latitude,
-      longitude: place.longitude,
-    }),
-  });
+  await createExpenditure(
+    {
+      categoryId: await serverCategoryId(categoryId),
+      storeName: savedName,
+      amount,
+      expenditureDate,
+      memo: draft.memo?.trim() || undefined,
+      ...(place && {
+        placeId: place.placeId,
+        address: place.address,
+        latitude: place.latitude,
+        longitude: place.longitude,
+      }),
+    },
+    options.inputType
+  );
 
   return savedName;
 }

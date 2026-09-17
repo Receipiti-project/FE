@@ -177,7 +177,8 @@ export default function VoiceScreen() {
       await registerExpense(
         voiceData,
         undefined,
-        placeDropped ? null : (place ?? undefined)
+        placeDropped ? null : (place ?? undefined),
+        { inputType: 'VOICE' }
       );
       Alert.alert('등록 완료', '가계부에 추가되었어요.', [
         { text: '확인', onPress: () => router.back() },

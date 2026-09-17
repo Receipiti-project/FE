@@ -204,7 +204,8 @@ export default function SmsScreen() {
       await registerExpense(
         draft,
         input,
-        placeDropped ? null : (place ?? undefined)
+        placeDropped ? null : (place ?? undefined),
+        { inputType: 'SMS' }
       );
       if (sourceSmsId) {
         markSmsRegistered(sourceSmsId);
@@ -381,7 +382,7 @@ export default function SmsScreen() {
           s.draft,
           s.body,
           place,
-          { useCurrentLocation: false }
+          { useCurrentLocation: false, inputType: 'SMS' }
         );
         markSmsRegistered(s.id);
         saved.push(s.id);
