@@ -23,7 +23,9 @@
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "android.permission.RECORD_AUDIO",
-        "android.permission.READ_SMS"
+        "android.permission.READ_SMS",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
       ],
       "package": "com.anonymous.Receipiti"
     },
@@ -71,7 +73,13 @@
           "cameraPermission": "영수증을 촬영해 자동 입력하기 위해 카메라 권한이 필요합니다."
         }
       ],
-      "expo-audio"
+      "expo-audio",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "결제한 가맹점의 위치를 정확히 찾기 위해 현재 위치를 사용합니다."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
