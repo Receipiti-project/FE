@@ -40,6 +40,7 @@ export type ResolvedLocation = {
 };
 
 const NEARBY_PICK_RADIUS_KM = 3;
+const CACHE_REUSE_RADIUS_KM = 5;
 const BRANCH_TOKEN_RE = /[가-힣A-Za-z0-9]+(?:점|지점)(?![가-힣])/g;
 
 const squash = (s: string): string => s.replace(/\s+/g, '');
@@ -85,6 +86,12 @@ function empty(
     fromCache: false,
     elapsedMs,
   };
+}
+
+function isNearby(from?: LatLng, here?: LatLng): boolean {
+  return (
+    from != null && here != null && haversineKm(from, here) <= CACHE_REUSE_RADIUS_KM
+  );
 }
 
 function preferSpendingPlaces(candidates: Place[]): Place[] {
@@ -138,7 +145,12 @@ export async function resolveLocation(
     }
   }
 
-  if (cached) {
+  const regional = cached?.source === 'auto' && !hasBranchToken(name);
+  const earlyHint = regional
+    ? (near ?? (await getLocationHint()) ?? undefined)
+    : near;
+
+  if (cached && (!regional || isNearby(cached.searchedFrom, earlyHint))) {
     return {
       status: 'resolved',
       placeId: cached.placeId,
@@ -159,7 +171,8 @@ export async function resolveLocation(
     return empty('failed', Date.now() - t0);
   }
 
-  const hint = near ?? (await getLocationHint()) ?? undefined;
+  const hint =
+    earlyHint ?? (regional ? undefined : ((await getLocationHint()) ?? undefined));
   const tokens = branchTokens(name);
 
   let places: Place[];
@@ -180,7 +193,7 @@ export async function resolveLocation(
   const candidates = preferSpendingPlaces(places);
   const exactSingle = totalCount === 1;
   const byBranch = tokens.length > 0 ? pickByBranch(candidates, tokens) : null;
-  const best = byBranch ?? (exactSingle ? candidates[0] : null);
+  const best = byBranch ?? (exactSingle && hint ? candidates[0] : null);
 
   if (!best) {
     return {
@@ -204,6 +217,7 @@ export async function resolveLocation(
     placeName: best.name,
     confidence,
     source: 'auto',
+    searchedFrom: hint,
   });
 
   return {

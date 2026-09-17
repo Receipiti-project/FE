@@ -37,7 +37,7 @@ export default function UnmappedSheet({
 
           <Text style={styles.title}>위치 미지정 {items.length}건</Text>
           <Text style={styles.subtitle}>
-            지도에는 추정 위치로 표시됩니다. 탭해서 정확한 장소를 지정하세요.
+            일부는 지도에 추정 위치로 표시돼요. 탭해서 장소를 지정하세요.
           </Text>
 
           {items.length === 0 && (

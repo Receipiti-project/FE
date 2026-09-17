@@ -6,17 +6,18 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
+  TextInput,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
 import {
   AI_SUGGESTED_QUESTIONS,
-  CATEGORIZATION_STATS,
   formatKRW,
   getCategory,
 } from "@/constants/mockData";
 import { useExpenditures } from "@/hooks/useExpenditures";
-import { createReport } from "@/services/api/reportApi";
+import { answerReportQuestion } from "@/services/reportAssistant";
 
 const RANGES = ["이번주", "이번달"] as const;
 type Range = (typeof RANGES)[number];
@@ -29,8 +30,22 @@ function currentWeekStart(): string {
   return d.toISOString().slice(0, 10);
 }
 
+function formatTrendAmount(amount: number): string {
+  if (amount >= 10_000) {
+    const value = Math.round((amount / 10_000) * 10) / 10;
+    return `${value.toLocaleString("ko-KR")}만원`;
+  }
+  if (amount >= 1_000) {
+    const value = Math.round((amount / 1_000) * 10) / 10;
+    return `${value.toLocaleString("ko-KR")}천원`;
+  }
+  return `${Math.round(amount).toLocaleString("ko-KR")}원`;
+}
+
 export default function ReportScreen() {
   const [range, setRange] = useState<Range>("이번달");
+  const [question, setQuestion] = useState("");
+  const [answer, setAnswer] = useState<string | null>(null);
 
   const {
     loading,
@@ -45,28 +60,6 @@ export default function ReportScreen() {
     dayOfWeekPattern,
     refetch,
   } = useExpenditures();
-
-  const [aiReport, setAiReport] = useState<string | null>(null);
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiError, setAiError] = useState<string | null>(null);
-
-  const handleGenerateReport = async () => {
-    setAiLoading(true);
-    setAiError(null);
-    try {
-      const now = new Date();
-      const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-      const expenditureData = allItems
-        .map((t) => `${t.datetime} ${t.store} ${t.categoryName} ${t.amount}원`)
-        .join("\n");
-      const res = await createReport(month, expenditureData);
-      setAiReport(res.report);
-    } catch (e) {
-      setAiError((e as Error)?.message ?? "리포트 생성에 실패했어요.");
-    } finally {
-      setAiLoading(false);
-    }
-  };
 
   // 기간 필터 적용
   const weekStart = useMemo(() => currentWeekStart(), []);
@@ -128,6 +121,13 @@ export default function ReportScreen() {
   const maxDow = Math.max(...dow.map((d) => d.total), 1);
   const peakTod = tod.reduce((a, b) => (a.total > b.total ? a : b));
 
+  const askQuestion = (nextQuestion = question) => {
+    const trimmed = nextQuestion.trim();
+    if (!trimmed) return;
+    setQuestion(trimmed);
+    setAnswer(answerReportQuestion(trimmed, filteredItems, range));
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <ScrollView contentContainerStyle={styles.scroll}>
@@ -139,14 +139,43 @@ export default function ReportScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* 기간 선택 */}
+        {/* 월간 AI 리포트 진입 */}
+        <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel="월간 소비 리포트 열기"
+          onPress={() => router.push("/report/monthly-ai")}
+          style={styles.aiReportHero}
+        >
+          <View style={styles.aiReportHeroIcon}>
+            <Ionicons name="sparkles" size={21} color="#FFFFFF" />
+          </View>
+          <View style={styles.aiReportHeroCopy}>
+            <Text style={styles.aiReportHeroTitle}>월간 소비 리포트</Text>
+            <Text style={styles.aiReportHeroDescription}>
+              원하는 월을 선택해 소비 패턴과 인사이트를 확인하세요
+            </Text>
+          </View>
+          <View style={styles.aiReportHeroAction}>
+            <Ionicons name="chevron-forward" size={19} color="#FFFFFF" />
+          </View>
+        </TouchableOpacity>
+
+        <View style={styles.statisticsHeader}>
+          <Text style={styles.statisticsTitle}>기간별 소비 통계</Text>
+          <Text style={styles.statisticsDescription}>조회할 기간을 선택하세요</Text>
+        </View>
+
+        {/* 통계 기간 선택 */}
         <View style={styles.rangeRow}>
           {RANGES.map((r) => {
             const active = r === range;
             return (
               <TouchableOpacity
                 key={r}
-                onPress={() => setRange(r)}
+                onPress={() => {
+                  setRange(r);
+                  setAnswer(null);
+                }}
                 style={[styles.rangeChip, active && styles.rangeChipActive]}
               >
                 <Text style={[styles.rangeChipText, active && styles.rangeChipTextActive]}>
@@ -193,8 +222,14 @@ export default function ReportScreen() {
                   const isToday = d.label === "오늘";
                   return (
                     <View key={d.date} style={styles.barCol}>
-                      <Text style={styles.barValue}>
-                        {d.total > 0 ? `${Math.round(d.total / 1000)}k` : ""}
+                      <Text
+                        style={styles.barValue}
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                        minimumFontScale={0.72}
+                        accessibilityLabel={d.total > 0 ? formatKRW(d.total) : undefined}
+                      >
+                        {d.total > 0 ? formatTrendAmount(d.total) : ""}
                       </Text>
                       <View style={styles.barTrack}>
                         <View
@@ -228,7 +263,7 @@ export default function ReportScreen() {
               <Text style={styles.emptyText}>지출 내역이 없어요</Text>
             ) : (
               chartCategory.map((c) => {
-                const cat = getCategory(c.id);
+                const cat = getCategory(c.id, c.name);
                 const ratio = c.total / maxCat;
                 const pct = displayTotal > 0 ? Math.round((c.total / displayTotal) * 100) : 0;
                 return (
@@ -335,44 +370,44 @@ export default function ReportScreen() {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.chatTitle}>AI에게 물어보기</Text>
-                <Text style={styles.chatSub}>자연어로 소비 내역을 검색하고 분석해보세요</Text>
+                <Text style={styles.chatSub}>현재 지출 데이터를 기기에서 바로 분석해요</Text>
               </View>
+            </View>
+            <View style={styles.chatInputRow}>
+              <TextInput
+                value={question}
+                onChangeText={setQuestion}
+                onSubmitEditing={() => askQuestion()}
+                placeholder="예: 가장 많이 쓴 카테고리는?"
+                placeholderTextColor="#818CF8"
+                returnKeyType="send"
+                style={styles.chatInput}
+              />
+              <TouchableOpacity
+                accessibilityLabel="질문하기"
+                disabled={!question.trim()}
+                onPress={() => askQuestion()}
+                style={[styles.chatSendButton, !question.trim() && styles.chatSendButtonDisabled]}
+              >
+                <Ionicons name="send" size={15} color="#FFFFFF" />
+              </TouchableOpacity>
             </View>
             <View style={styles.chatPromptList}>
               {AI_SUGGESTED_QUESTIONS.map((q) => (
-                <TouchableOpacity key={q} style={styles.chatPrompt}>
+                <TouchableOpacity key={q} onPress={() => askQuestion(q)} style={styles.chatPrompt}>
                   <Text style={styles.chatPromptText}>{q}</Text>
                   <Ionicons name="arrow-forward" size={14} color="#7C3AED" />
                 </TouchableOpacity>
               ))}
             </View>
-          </View>
-        </View>
-
-        {/* AI 리포트 */}
-        <View style={styles.section}>
-          <View style={styles.sectionHead}>
-            <View style={styles.aiTitleRow}>
-              <Ionicons name="sparkles-outline" size={16} color="#3B82F6" />
-              <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>AI 소비 리포트</Text>
-            </View>
-            <TouchableOpacity onPress={handleGenerateReport} disabled={aiLoading}>
-              <Text style={[styles.metaTinyLabel, { color: "#3B82F6", fontWeight: "700" }]}>
-                {aiReport ? "다시 생성" : "생성하기"}
-              </Text>
-            </TouchableOpacity>
-          </View>
-          <View style={[styles.insightCard, { borderLeftColor: "#3B82F6" }]}>
-            {aiLoading ? (
-              <ActivityIndicator color="#3B82F6" style={{ paddingVertical: 8 }} />
-            ) : aiError ? (
-              <Text style={[styles.insightBody, { color: "#DC2626" }]}>{aiError}</Text>
-            ) : aiReport ? (
-              <Text style={styles.insightBody}>{aiReport}</Text>
-            ) : (
-              <Text style={styles.insightBody}>
-                이번 달 소비 데이터를 바탕으로 AI 리포트를 생성해보세요.
-              </Text>
+            {!!answer && (
+              <View style={styles.chatAnswer}>
+                <View style={styles.chatAnswerTitleRow}>
+                  <Ionicons name="sparkles-outline" size={14} color="#C4B5FD" />
+                  <Text style={styles.chatAnswerTitle}>분석 답변</Text>
+                </View>
+                <Text style={styles.chatAnswerText}>{answer}</Text>
+              </View>
             )}
           </View>
         </View>
@@ -413,39 +448,6 @@ export default function ReportScreen() {
           )}
         </View>
 
-        {/* 카테고리 자동분류 통계 */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>카테고리 자동분류</Text>
-          <View style={styles.classifyCard}>
-            <View style={styles.classifyRow}>
-              <View style={[styles.classifyStat, { borderRightWidth: 1 }]}>
-                <Text style={styles.classifyValue}>{CATEGORIZATION_STATS.autoMatched}</Text>
-                <Text style={styles.classifyLabel}>자동 매칭</Text>
-              </View>
-              <View style={[styles.classifyStat, { borderRightWidth: 1 }]}>
-                <Text style={[styles.classifyValue, { color: "#7C3AED" }]}>{CATEGORIZATION_STATS.userCorrected}</Text>
-                <Text style={styles.classifyLabel}>내가 수정</Text>
-              </View>
-              <View style={styles.classifyStat}>
-                <Text style={[styles.classifyValue, { color: "#F59E0B" }]}>{CATEGORIZATION_STATS.pending}</Text>
-                <Text style={styles.classifyLabel}>분류 대기</Text>
-              </View>
-            </View>
-            <View style={styles.classifyAccBox}>
-              <View style={styles.classifyAccHead}>
-                <Text style={styles.classifyAccLabel}>분류 정확도</Text>
-                <Text style={styles.classifyAccVal}>{Math.round(CATEGORIZATION_STATS.accuracy * 100)}%</Text>
-              </View>
-              <View style={styles.classifyTrack}>
-                <View style={[styles.classifyFill, { width: `${CATEGORIZATION_STATS.accuracy * 100}%` }]} />
-              </View>
-              <Text style={styles.classifyHint}>
-                내 수정 이력이 많을수록 더 정확해져요.
-              </Text>
-            </View>
-          </View>
-        </View>
-
         <View style={{ height: 24 }} />
       </ScrollView>
     </SafeAreaView>
@@ -458,6 +460,15 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 },
   headerTitle: { fontSize: 22, fontWeight: "700", color: "#111827" },
   iconBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: "#FFFFFF", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#F3F4F6" },
+  aiReportHero: { flexDirection: "row", alignItems: "center", gap: 13, padding: 17, borderRadius: 20, backgroundColor: "#312E81", shadowColor: "#312E81", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.18, shadowRadius: 12, elevation: 5 },
+  aiReportHeroIcon: { width: 44, height: 44, borderRadius: 14, alignItems: "center", justifyContent: "center", backgroundColor: "#7C3AED" },
+  aiReportHeroCopy: { flex: 1 },
+  aiReportHeroTitle: { color: "#FFFFFF", fontSize: 17, fontWeight: "800" },
+  aiReportHeroDescription: { color: "#C7D2FE", fontSize: 11, lineHeight: 16, marginTop: 4 },
+  aiReportHeroAction: { width: 32, height: 32, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.1)" },
+  statisticsHeader: { marginTop: 26, marginBottom: 10 },
+  statisticsTitle: { color: "#111827", fontSize: 16, fontWeight: "800" },
+  statisticsDescription: { color: "#9CA3AF", fontSize: 11, marginTop: 3 },
   rangeRow: { flexDirection: "row", backgroundColor: "#F3F4F6", borderRadius: 12, padding: 4, marginBottom: 16 },
   rangeChip: { flex: 1, paddingVertical: 8, borderRadius: 8, alignItems: "center" },
   rangeChipActive: { backgroundColor: "#FFFFFF" },
@@ -472,9 +483,6 @@ const styles = StyleSheet.create({
   metaValue: { color: "#111827", fontWeight: "700", fontSize: 13 },
   divider: { width: 1, height: 24, backgroundColor: "#F3F4F6" },
   section: { marginTop: 24 },
-  sectionHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
-  aiTitleRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  metaTinyLabel: { color: "#9CA3AF", fontSize: 11 },
   sectionTitle: { fontSize: 15, fontWeight: "700", color: "#111827", marginBottom: 12 },
   trendCard: { backgroundColor: "#FFFFFF", borderRadius: 16, padding: 16, borderWidth: 1, borderColor: "#F3F4F6" },
   barRow: { flexDirection: "row", alignItems: "flex-end", height: 160, gap: 8 },
@@ -492,10 +500,6 @@ const styles = StyleSheet.create({
   catAmt: { color: "#111827", fontWeight: "700", fontSize: 13 },
   catBarTrack: { height: 6, backgroundColor: "#F3F4F6", borderRadius: 999, overflow: "hidden" },
   catBarFill: { height: "100%", borderRadius: 999 },
-  insightCard: { flexDirection: "row", backgroundColor: "#FFFFFF", borderRadius: 16, padding: 14, borderWidth: 1, borderColor: "#F3F4F6", borderLeftWidth: 4, gap: 12, alignItems: "flex-start" },
-  insightIcon: { width: 36, height: 36, borderRadius: 10, alignItems: "center", justifyContent: "center" },
-  insightTitle: { color: "#111827", fontSize: 14, fontWeight: "700", marginBottom: 4 },
-  insightBody: { color: "#4B5563", fontSize: 12, lineHeight: 18 },
   storeList: { backgroundColor: "#FFFFFF", borderRadius: 16, borderWidth: 1, borderColor: "#F3F4F6", overflow: "hidden" },
   storeRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: "#F3F4F6", gap: 12 },
   rankBadge: { width: 28, height: 28, borderRadius: 14, backgroundColor: "#EFF6FF", alignItems: "center", justifyContent: "center" },
@@ -525,20 +529,16 @@ const styles = StyleSheet.create({
   chatBadge: { width: 32, height: 32, borderRadius: 16, backgroundColor: "#7C3AED", alignItems: "center", justifyContent: "center" },
   chatTitle: { color: "#FFFFFF", fontWeight: "700", fontSize: 14 },
   chatSub: { color: "#A5B4FC", fontSize: 11, marginTop: 2, lineHeight: 16 },
+  chatInputRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 14 },
+  chatInput: { flex: 1, minHeight: 42, borderRadius: 12, paddingHorizontal: 12, color: "#FFFFFF", backgroundColor: "rgba(255,255,255,0.08)", borderWidth: 1, borderColor: "rgba(255,255,255,0.12)", fontSize: 12 },
+  chatSendButton: { width: 42, height: 42, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: "#7C3AED" },
+  chatSendButtonDisabled: { opacity: 0.4 },
   chatPromptList: { gap: 8, marginTop: 14 },
   chatPrompt: { flexDirection: "row", alignItems: "center", backgroundColor: "rgba(255,255,255,0.06)", borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderColor: "rgba(255,255,255,0.08)" },
   chatPromptText: { color: "#E0E7FF", fontSize: 12, fontWeight: "600", flex: 1 },
-  classifyCard: { backgroundColor: "#FFFFFF", borderRadius: 16, padding: 16, borderWidth: 1, borderColor: "#F3F4F6" },
-  classifyRow: { flexDirection: "row" },
-  classifyStat: { flex: 1, alignItems: "center", paddingVertical: 8, borderRightColor: "#F3F4F6" },
-  classifyValue: { fontSize: 22, fontWeight: "800", color: "#111827" },
-  classifyLabel: { fontSize: 11, color: "#6B7280", marginTop: 4 },
-  classifyAccBox: { marginTop: 12, paddingTop: 14, borderTopWidth: 1, borderTopColor: "#F3F4F6" },
-  classifyAccHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  classifyAccLabel: { color: "#6B7280", fontWeight: "600", fontSize: 12 },
-  classifyAccVal: { color: "#111827", fontWeight: "800", fontSize: 14 },
-  classifyTrack: { height: 6, backgroundColor: "#F3F4F6", borderRadius: 999, marginTop: 8, overflow: "hidden" },
-  classifyFill: { height: "100%", backgroundColor: "#10B981", borderRadius: 999 },
-  classifyHint: { color: "#9CA3AF", fontSize: 11, lineHeight: 16, marginTop: 10 },
+  chatAnswer: { marginTop: 12, borderRadius: 12, padding: 12, backgroundColor: "rgba(124,58,237,0.2)", borderWidth: 1, borderColor: "rgba(196,181,253,0.24)" },
+  chatAnswerTitleRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  chatAnswerTitle: { color: "#C4B5FD", fontSize: 11, fontWeight: "700" },
+  chatAnswerText: { color: "#F5F3FF", fontSize: 12, lineHeight: 19, marginTop: 7 },
   emptyText: { color: "#9CA3AF", fontSize: 13, textAlign: "center" },
 });

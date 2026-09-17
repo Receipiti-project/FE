@@ -23,6 +23,7 @@ type Props = {
   storeName: string;
   near?: LatLng | null;
   rememberDefault?: boolean;
+  busy?: boolean;
   initialCandidates?: Place[];
   suggested?: Place | null;
   onConfirm: (place: Place) => void;
@@ -55,7 +56,8 @@ export default function PlacePicker({
   visible,
   storeName,
   near = null,
-  rememberDefault = true,
+  rememberDefault = false,
+  busy = false,
   initialCandidates = [],
   suggested = null,
   onConfirm,
@@ -72,7 +74,7 @@ export default function PlacePicker({
   const [loading, setLoading] = useState(false);
   const [gps, setGps] = useState<LatLng | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [remember, setRemember] = useState(true);
+  const [remember, setRemember] = useState(false);
   const requestRef = useRef(0);
   const initialRef = useRef({
     initialCandidates,
@@ -158,7 +160,9 @@ export default function PlacePicker({
       visible={visible}
       animationType="slide"
       transparent
-      onRequestClose={onClose}
+      onRequestClose={() => {
+        if (!busy) onClose();
+      }}
     >
       <KeyboardAvoidingView
         style={styles.backdrop}
@@ -167,7 +171,7 @@ export default function PlacePicker({
         <View style={styles.sheet}>
           <View style={styles.header}>
             <Text style={styles.title}>위치 선택</Text>
-            <TouchableOpacity onPress={onClose} hitSlop={12}>
+            <TouchableOpacity onPress={onClose} hitSlop={12} disabled={busy}>
               <Ionicons name="close" size={22} color="#6B7280" />
             </TouchableOpacity>
           </View>
@@ -260,21 +264,36 @@ export default function PlacePicker({
             </Pressable>
           )}
 
-          <TouchableOpacity style={styles.onlineBtn} onPress={onOnlinePurchase}>
+          <TouchableOpacity
+            style={styles.onlineBtn}
+            onPress={onOnlinePurchase}
+            disabled={busy}
+          >
             <Ionicons name="globe-outline" size={15} color="#6B7280" />
             <Text style={styles.onlineBtnText}>온라인 구매였어요</Text>
           </TouchableOpacity>
 
           <View style={styles.footer}>
-            <TouchableOpacity style={styles.skipBtn} onPress={onSkip}>
+            <TouchableOpacity
+              style={styles.skipBtn}
+              onPress={onSkip}
+              disabled={busy}
+            >
               <Text style={styles.skipBtnText}>위치 없이 저장</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.confirmBtn, !selected && styles.confirmBtnOff]}
+              style={[
+                styles.confirmBtn,
+                (!selected || busy) && styles.confirmBtnOff,
+              ]}
               onPress={confirm}
-              disabled={!selected}
+              disabled={!selected || busy}
             >
-              <Text style={styles.confirmBtnText}>이 위치로</Text>
+              {busy ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Text style={styles.confirmBtnText}>이 위치로</Text>
+              )}
             </TouchableOpacity>
           </View>
         </View>

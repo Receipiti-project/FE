@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from "react";
+import React, { useState, useMemo, useCallback, useEffect } from "react";
 import {
   View,
   Text,
@@ -12,7 +12,7 @@ import {
 import { Calendar } from "react-native-calendars";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { router, useFocusEffect } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { formatKRW, getCategory } from "@/constants/mockData";
 import { useExpenditures, formatTimeReal } from "@/hooks/useExpenditures";
 
@@ -33,6 +33,19 @@ function localDateStr(d = new Date()): string {
   return `${y}-${m}-${day}`;
 }
 
+function firstParam(value: string | string[] | undefined): string {
+  return Array.isArray(value) ? value[0] ?? "" : value ?? "";
+}
+
+function validDateOrToday(value: string): string {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : localDateStr();
+}
+
+function periodFromDate(date: string): { year: number; month: number } {
+  const [year, month] = date.split("-").map(Number);
+  return { year, month };
+}
+
 function formatSelectedDate(dateStr: string): string {
   const d = new Date(dateStr + "T00:00:00");
   const todayStr = localDateStr();
@@ -47,11 +60,19 @@ function formatSelectedDate(dateStr: string): string {
 }
 
 export default function LedgerScreen() {
-  const today = localDateStr();
-  const [selected, setSelected] = useState(today);
+  const params = useLocalSearchParams<{ date?: string | string[] }>();
+  const requestedDate = validDateOrToday(firstParam(params.date));
+  const [selected, setSelected] = useState(requestedDate);
+  const [visiblePeriod, setVisiblePeriod] = useState(() => periodFromDate(requestedDate));
   const [showModal, setShowModal] = useState(false);
 
-  const { loading, allItems, refetch } = useExpenditures();
+  const { loading, allItems, refetch } = useExpenditures(5, visiblePeriod);
+
+  useEffect(() => {
+    const nextDate = validDateOrToday(firstParam(params.date));
+    setSelected(nextDate);
+    setVisiblePeriod(periodFromDate(nextDate));
+  }, [params.date]);
 
   // 화면 포커스될 때마다 최신 데이터 가져오기 
   useFocusEffect(
@@ -94,8 +115,12 @@ export default function LedgerScreen() {
 
       <ScrollView showsVerticalScrollIndicator={false}>
         <Calendar
+          current={selected}
           markedDates={markedDates}
           onDayPress={(day: any) => setSelected(day.dateString)}
+          onMonthChange={(month) =>
+            setVisiblePeriod({ year: month.year, month: month.month })
+          }
           theme={{
             todayTextColor: BLUE,
             arrowColor: "#374151",
@@ -136,7 +161,7 @@ export default function LedgerScreen() {
           ) : (
             <View style={styles.txList}>
               {dayItems.map((item, idx) => {
-                const cat = getCategory(item.category);
+                const cat = getCategory(item.category, item.categoryName);
                 const isLast = idx === dayItems.length - 1;
                 return (
                   <TouchableOpacity

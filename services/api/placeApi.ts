@@ -1,4 +1,4 @@
-import { API_AUTH_TOKEN, apiUrl, buildAuthHeaders, isApiConfigured } from "./config";
+import { apiUrl, buildAuthHeaders, isApiConfigured } from "./config";
 
 export const API_PLACE_SEARCH_TIMEOUT_MS = 8_000;
 
@@ -14,7 +14,7 @@ export type PlaceSearchResponse = {
 };
 
 export function isPlaceApiConfigured(): boolean {
-  return isApiConfigured() && API_AUTH_TOKEN.length > 0;
+  return isApiConfigured();
 }
 
 export async function searchPlacesFromServer(

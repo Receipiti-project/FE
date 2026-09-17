@@ -1,4 +1,5 @@
 import { Directory, File, Paths } from 'expo-file-system';
+import { LatLng } from './mapGeo';
 
 const CACHE_DIR = 'receipiti';
 const CACHE_FILE = 'placeCache.json';
@@ -13,6 +14,7 @@ export type CachedPlace = {
   placeName: string;
   confidence: 'high' | 'medium' | 'low';
   source: 'auto' | 'user';
+  searchedFrom?: LatLng;
   savedAt: number;
 };
 

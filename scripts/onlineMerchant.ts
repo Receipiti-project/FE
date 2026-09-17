@@ -1,5 +1,5 @@
 const ONLINE_KEYWORDS = [
-  '쿠팡', '쿠팡이츠', '배달의민족', '우아한형제', '요기요', '배민',
+  '쿠팡', '쿠팡이츠', '배달의민족', '우아한형제', '우아한형제들', '요기요', '배민',
   '네이버페이', '네이버', '카카오페이', '카카오T', '카카오모빌리티',
   'G마켓', '지마켓', '옥션', '11번가', '티몬', '위메프', '인터파크',
   'SSG', '쓱', '마켓컬리', '컬리', '올웨이즈', '알리익스프레스', '알리',
@@ -10,7 +10,7 @@ const ONLINE_KEYWORDS = [
 
 const SUBSCRIPTION_KEYWORDS = [
   '넷플릭스', 'NETFLIX', '유튜브', 'YOUTUBE', '왓챠', '웨이브', '티빙',
-  '디즈니', 'DISNEY', '스포티파이', 'SPOTIFY', '멜론', '지니뮤직', '플로',
+  '디즈니', '디즈니플러스', 'DISNEY', '스포티파이', 'SPOTIFY', '멜론', '지니뮤직', '플로',
   'APPLE', '애플', 'GOOGLE', '구글', 'MICROSOFT', 'OPENAI', 'CHATGPT',
   'AWS', '아마존', 'AMAZON', '어도비', 'ADOBE', '노션', 'NOTION',
 ] as const;
@@ -45,16 +45,50 @@ export function hasOnlineSignal(rawSms: string): boolean {
 }
 
 const normalize = (s: string): string =>
-  s.replace(/[\s\-_.()（）]/g, '').toUpperCase();
+  s.replace(/\s+/g, ' ').trim().toUpperCase();
+
+const HANGUL = /[가-힣]/;
+const WORD_CHAR = /[A-Z0-9&]/;
+const ALLOWED_SUFFIXES = [
+  '주식회사', '코리아', '페이먼츠', '페이', '파이낸셜', '모바일',
+  '닷컴', '요금', '결제', '이용료', '공사', '공단',
+];
+
+function matchesKeyword(name: string, keyword: string): boolean {
+  if (!keyword) return false;
+  const hangulKeyword = HANGUL.test(keyword[0]);
+
+  for (
+    let i = name.indexOf(keyword);
+    i >= 0;
+    i = name.indexOf(keyword, i + 1)
+  ) {
+    const before = name[i - 1];
+    const after = name[i + keyword.length];
+    const rest = name.slice(i + keyword.length);
+
+    const ok = hangulKeyword
+      ? (!before || !HANGUL.test(before)) &&
+        (!after ||
+          !HANGUL.test(after) ||
+          ALLOWED_SUFFIXES.some((s) => rest.startsWith(s)))
+      : (!before || !WORD_CHAR.test(before)) &&
+        (!after || !WORD_CHAR.test(after));
+
+    if (ok) return true;
+  }
+  return false;
+}
 
 export function classifyNonPlace(storeName: string): NonPlaceReason {
   const n = normalize(storeName);
   if (!n) return null;
 
+  const compact = n.replace(/ /g, '');
   const hit = (list: readonly string[]) =>
     list.some((k) => {
       const nk = normalize(k);
-      return n === nk || n.startsWith(nk) || n.includes(nk);
+      return matchesKeyword(n, nk) || matchesKeyword(compact, nk.replace(/ /g, ''));
     });
 
   if (hit(TELECOM_UTILITY_KEYWORDS)) return 'utility';

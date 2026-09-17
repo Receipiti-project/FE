@@ -120,6 +120,11 @@ export default function MapScreen() {
     setSelected(null);
   };
 
+  const onTimeRangeChange = (next: TimeRangeId) => {
+    setTimeRange(next);
+    setSelected(null);
+  };
+
   const revealMap = () => scrollRef.current?.scrollTo({ y: 0, animated: true });
 
 
@@ -171,7 +176,7 @@ export default function MapScreen() {
 
         <ModeTabs mode={mode} onChange={onModeChange} />
 
-        <TimeRangeFilter timeRange={timeRange} onChange={setTimeRange} />
+        <TimeRangeFilter timeRange={timeRange} onChange={onTimeRangeChange} />
 
         <MapCanvas
           ref={mapRef}
@@ -251,7 +256,8 @@ export default function MapScreen() {
       />
 
       <PlacePicker
-        visible={editing !== null && !saving}
+        visible={editing !== null}
+        busy={saving}
         storeName={stripBranchName(editing?.storeName ?? "")}
         near={editing?.near ?? null}
         rememberDefault={false}

@@ -1,12 +1,11 @@
 import { getTimeRange, Mode, TimeRangeId } from "@/constants/mapConfig";
-import { CategoryId } from "@/constants/mockData";
 import {
   ConsumptionRoutePlace,
   ExpenditureListItem,
   getConsumptionRoute,
   getMonthlyExpenditures,
 } from "@/services/api/expenditureApi";
-import { nameToLocalCategoryId } from "@/services/categoryMapping";
+import { categoryKeyFromName } from "@/services/categoryMapping";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityZone, buildActivityZones } from "./activityZones";
 import { resolveLocation } from "./locationPipeline";
@@ -23,7 +22,7 @@ export type MapPin = {
   id: string;
   storeName: string;
   amount: number;
-  category: CategoryId;
+  category: string;
   paymentDate: string;
   latitude: number;
   longitude: number;
@@ -76,7 +75,7 @@ function buildPin(
     id: String(item.expenditureId),
     storeName: item.storeName,
     amount: item.amount,
-    category: nameToLocalCategoryId(item.categoryName),
+    category: categoryKeyFromName(item.categoryName),
     paymentDate: item.expenditureDate,
     latitude: coords.latitude,
     longitude: coords.longitude,
@@ -88,6 +87,8 @@ function buildPin(
 async function toPins(items: ExpenditureListItem[]): Promise<MapPin[]> {
   const resolved = await Promise.all(
     items.map(async (item): Promise<MapPin | null> => {
+      if (hasNoLocation(String(item.expenditureId))) return null;
+
       if (item.latitude != null && item.longitude != null) {
         return buildPin(
           item,
@@ -130,13 +131,14 @@ async function toPins(items: ExpenditureListItem[]): Promise<MapPin[]> {
 }
 
 function toRoutePins(places: ConsumptionRoutePlace[]): MapPin[] {
-  return [...places]
+  return places
+    .filter((p) => !hasNoLocation(String(p.expenditureId)))
     .sort((a, b) => a.sequence - b.sequence)
     .map((p) => ({
       id: String(p.expenditureId),
       storeName: p.storeName,
       amount: p.amount,
-      category: nameToLocalCategoryId(p.categoryName),
+      category: categoryKeyFromName(p.categoryName),
       paymentDate: p.visitedAt,
       latitude: p.latitude,
       longitude: p.longitude,
@@ -204,7 +206,16 @@ export function useMapData(
         ? list.dailyExpenditures.flatMap((d) => d.list)
         : [];
       if (alive) {
-        setStores(toTopStores(items, 3));
+        setStores(
+          toTopStores(
+            items.filter(
+              (item) =>
+                (item.latitude != null && item.longitude != null) ||
+                classifyNonPlace(item.storeName) === null
+            ),
+            3
+          )
+        );
         setUnmapped(
           items
             .filter(

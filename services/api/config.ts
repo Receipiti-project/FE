@@ -1,10 +1,12 @@
+const DEFAULT_API_BASE_URL = "http://receipiti.store";
+
 export const API_BASE_URL: string =
-  ((process.env as any).EXPO_PUBLIC_API_BASE_URL as string | undefined)?.trim() ??
-  "";
+  process.env.EXPO_PUBLIC_API_BASE_URL?.trim() || DEFAULT_API_BASE_URL;
 
 export const API_AUTH_TOKEN: string =
-  ((process.env as any).EXPO_PUBLIC_API_AUTH_TOKEN as string | undefined)?.trim() ??
-  "";
+  process.env.EXPO_PUBLIC_API_AUTH_TOKEN?.trim() ?? "";
+
+let sessionAuthToken: string | null | undefined;
 
 export const API_OCR_TIMEOUT_MS = 25_000;
 
@@ -12,21 +14,19 @@ export function isApiConfigured(): boolean {
   return API_BASE_URL.length > 0;
 }
 
-/* 백엔드 OCR 엔드포인트 임시 설정 */
-export const OCR_ENDPOINTS = {
-  receipt: "/ocr/receipt",
-  capture: "/ocr/capture",
-} as const;
-
 export function buildAuthHeaders(extra?: Record<string, string>): Record<string, string> {
   const h: Record<string, string> = {
     Accept: "application/json",
     "X-Client": "receipiti-mobile",
-    "ngrok-skip-browser-warning": "true",
     ...(extra ?? {}),
   };
-  if (API_AUTH_TOKEN) h.Authorization = `Bearer ${API_AUTH_TOKEN}`;
+  const token = sessionAuthToken === undefined ? API_AUTH_TOKEN : sessionAuthToken;
+  if (token) h.Authorization = `Bearer ${token}`;
   return h;
+}
+
+export function setSessionAuthToken(token: string | null): void {
+  sessionAuthToken = token?.trim() || null;
 }
 
 export function apiUrl(path: string): string {
