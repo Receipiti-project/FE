@@ -388,4 +388,10 @@ export const styles = StyleSheet.create({
     justifyContent: "center",
   },
   modalConfirmText: { color: "#FFFFFF", fontWeight: "800", fontSize: 14 },
+  inputHint: {
+    marginTop: 2,
+    color: "#6B7280",
+    fontSize: 11,
+    lineHeight: 16,
+  },
 });

@@ -5,18 +5,18 @@ import {
 } from "@/services/api/expenditureApi";
 import { isApiConfigured } from "@/services/api/config";
 import {
-  CategoryId,
   CATEGORIES,
   IoniconName,
   TRANSACTIONS,
 } from "@/constants/mockData";
+import { categoryKeyFromName } from "@/services/categoryMapping";
 
 export type DisplayTransaction = {
   id: string;
   expenditureId?: number;
   store: string;
   amount: number;
-  category: CategoryId;
+  category: string;
   categoryName: string;
   datetime: string;
   method: string;
@@ -31,7 +31,7 @@ export type DailySpending = {
 };
 
 export type CategorySpending = {
-  id: CategoryId;
+  id: string;
   name: string;
   total: number;
 };
@@ -75,19 +75,10 @@ export type UseExpendituresResult = {
   dayOfWeekPattern: DayOfWeekItem[];
 };
 
-function toCategoryId(name: string): CategoryId {
-  if (!name) return "etc";
-  const n = name.trim();
-  const MAP: Record<string, CategoryId> = {
-    "식비": "food",      food: "food",
-    "교통": "transport", transport: "transport",
-    "쇼핑": "shopping",  shopping: "shopping",
-    "문화/여가": "culture", "문화": "culture", "여가": "culture", culture: "culture",
-    "건강/의료": "health",  "건강": "health", "의료": "health", health: "health",
-    "기타": "etc",       etc: "etc",
-  };
-  return MAP[n] ?? MAP[n.toLowerCase()] ?? "etc";
-}
+type ExpenditurePeriod = {
+  year: number;
+  month: number;
+};
 
 function toDisplay(item: ExpenditureListItem): DisplayTransaction {
   return {
@@ -95,7 +86,7 @@ function toDisplay(item: ExpenditureListItem): DisplayTransaction {
     expenditureId: item.expenditureId,
     store: item.storeName,
     amount: item.amount,
-    category: toCategoryId(item.categoryName),
+    category: categoryKeyFromName(item.categoryName),
     categoryName: item.categoryName,
     datetime: item.expenditureDate,
     method: "카드",
@@ -158,7 +149,7 @@ function buildByCategoryReport(
   items: DisplayTransaction[],
   totalAmount: number
 ): CategorySpending[] {
-  const map = new Map<CategoryId, { name: string; total: number }>();
+  const map = new Map<string, { name: string; total: number }>();
   for (const item of items) {
     const cur = map.get(item.category);
     if (cur) {
@@ -251,10 +242,13 @@ function processItems(items: DisplayTransaction[], totalAmount: number, recentCo
   };
 }
 
-export function useExpenditures(recentCount = 5): UseExpendituresResult {
+export function useExpenditures(
+  recentCount = 5,
+  period?: ExpenditurePeriod
+): UseExpendituresResult {
   const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth() + 1;
+  const year = period?.year ?? now.getFullYear();
+  const month = period?.month ?? now.getMonth() + 1;
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
