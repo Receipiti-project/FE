@@ -1,12 +1,11 @@
 import { getTimeRange, Mode, TimeRangeId } from "@/constants/mapConfig";
-import { CategoryId } from "@/constants/mockData";
 import {
   ConsumptionRoutePlace,
   ExpenditureListItem,
   getConsumptionRoute,
   getMonthlyExpenditures,
 } from "@/services/api/expenditureApi";
-import { nameToLocalCategoryId } from "@/services/categoryMapping";
+import { categoryKeyFromName } from "@/services/categoryMapping";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityZone, buildActivityZones } from "./activityZones";
 import { resolveLocation } from "./locationPipeline";
@@ -23,7 +22,7 @@ export type MapPin = {
   id: string;
   storeName: string;
   amount: number;
-  category: CategoryId;
+  category: string;
   paymentDate: string;
   latitude: number;
   longitude: number;
@@ -76,7 +75,7 @@ function buildPin(
     id: String(item.expenditureId),
     storeName: item.storeName,
     amount: item.amount,
-    category: nameToLocalCategoryId(item.categoryName),
+    category: categoryKeyFromName(item.categoryName),
     paymentDate: item.expenditureDate,
     latitude: coords.latitude,
     longitude: coords.longitude,
@@ -139,7 +138,7 @@ function toRoutePins(places: ConsumptionRoutePlace[]): MapPin[] {
       id: String(p.expenditureId),
       storeName: p.storeName,
       amount: p.amount,
-      category: nameToLocalCategoryId(p.categoryName),
+      category: categoryKeyFromName(p.categoryName),
       paymentDate: p.visitedAt,
       latitude: p.latitude,
       longitude: p.longitude,

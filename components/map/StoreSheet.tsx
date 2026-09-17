@@ -1,9 +1,8 @@
-import { formatKRW, formatTime, getCategory } from "@/constants/mockData";
+import { formatKRW, formatTime, getCategoryByName } from "@/constants/mockData";
 import {
   ExpenditureListItem,
   getMonthlyExpenditures,
 } from "@/services/api/expenditureApi";
-import { nameToLocalCategoryId } from "@/services/categoryMapping";
 import { TopStore } from "@/scripts/useMapData";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -110,7 +109,7 @@ export default function StoreSheet({ store, year, month, onClose }: Props) {
             contentContainerStyle={{ gap: 8, paddingBottom: 8 }}
           >
             {items.map((item) => {
-              const cat = getCategory(nameToLocalCategoryId(item.categoryName));
+              const cat = getCategoryByName(item.categoryName);
               return (
                 <Pressable
                   key={item.expenditureId}
