@@ -1,3 +1,4 @@
+import { guessCategory } from './storeCategory';
 import { InputType, Currency, CategoryType } from './types';
 
 export type TokenType =
@@ -116,33 +117,52 @@ const RULES: Rule[] = [
   [/^[^\s]/,                                           null],
 ];
 
+const MAX_STORE_NAME_PARTS = 3;
+
 export function lex(sms: string): Record<string, string | number> {
   const result: Record<string, string | number> = {};
   let rest = sms;
   let guard = 0;
+  const storeParts: string[] = [];
+  let storeClosed = false;
+
+  const closeStore = () => {
+    if (storeParts.length) storeClosed = true;
+  };
 
   while (rest.length && guard++ < 10000) {
     let matched = false;
     for (const [re, fn] of RULES) {
       const m = rest.match(re);
       if (m && m.index === 0) {
-        if (fn) {
+        const isGap = /^[\s\n\r]+$/.test(m[0]);
+        if (isGap) {
+          if (/[\n\r]/.test(m[0])) closeStore();
+        } else if (fn) {
           const tok = fn(m[0]);
-          if (tok) {
-            if (tok.type === 'storeName') {
-              if (result.storeName == null) result.storeName = tok.value;
-            } else {
-              result[tok.type] = tok.value;
+          if (tok && tok.type === 'storeName') {
+            if (!storeClosed && storeParts.length < MAX_STORE_NAME_PARTS) {
+              storeParts.push(String(tok.value));
             }
+          } else {
+            if (tok) result[tok.type] = tok.value;
+            closeStore();
           }
+        } else {
+          closeStore();
         }
         rest = rest.slice(m[0].length);
         matched = true;
         break;
       }
     }
-    if (!matched) rest = rest.slice(1);
+    if (!matched) {
+      rest = rest.slice(1);
+      closeStore();
+    }
   }
+
+  if (storeParts.length) result.storeName = storeParts.join(' ');
   return result;
 }
 
@@ -164,11 +184,13 @@ export function parseSms(sms: string, now: Date = new Date()): ParsedExpense {
     paymentDate = `${now.getFullYear()}-${mm}-${dd}T${hh}:${mi}:00`;
   }
 
+  const storeName = typeof h.storeName === 'string' ? h.storeName : null;
+
   return {
     amount:      typeof h.amount === 'number' ? h.amount : null,
-    storeName:   typeof h.storeName === 'string' ? h.storeName : null,
+    storeName,
     paymentDate,
-    category:    null,
+    category:    storeName ? guessCategory(storeName) : null,
     memo:        null,
     inputType:   'SMS',
     currency:    null,

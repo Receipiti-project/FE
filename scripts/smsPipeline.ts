@@ -9,18 +9,21 @@ export interface PipelineResult {
   elapsedMs: number;
 }
 
-function fillPaymentDateFallback(p: ParsedExpense): ParsedExpense {
+function fillPaymentDateFallback(p: ParsedExpense, now: Date): ParsedExpense {
   if (p.paymentDate) return p;
-  const now = new Date();
   const pad = (n: number) => String(n).padStart(2, '0');
   const iso = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
             + `T${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
   return { ...p, paymentDate: iso };
 }
 
-export async function smsToExpense(sms: string): Promise<PipelineResult> {
+export async function smsToExpense(
+  sms: string,
+  receivedAt?: Date
+): Promise<PipelineResult> {
   const t0 = Date.now();
-  const regex = parseSms(sms);
+  const now = receivedAt ?? new Date();
+  const regex = parseSms(sms, now);
 
   if (hasAllRequired(regex)) {
     return {
@@ -33,9 +36,9 @@ export async function smsToExpense(sms: string): Promise<PipelineResult> {
   }
 
   try {
-    const llm = await parseWithLLM(sms);
+    const llm = await parseWithLLM(sms, now);
     const merged = mergeParsed(regex, llm);
-    const withDate = fillPaymentDateFallback(merged);
+    const withDate = fillPaymentDateFallback(merged, now);
 
     const allFromLlm =
       regex.amount == null && regex.storeName == null && regex.paymentDate == null;
@@ -52,7 +55,7 @@ export async function smsToExpense(sms: string): Promise<PipelineResult> {
   } catch (e) {
     console.warn('[LLM fallback failed]', e);
     return {
-      data: fillPaymentDateFallback(regex),
+      data: fillPaymentDateFallback(regex, now),
       source: 'regex',
       llmCalled: true,
       confidence: 'low',
