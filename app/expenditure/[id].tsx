@@ -241,10 +241,10 @@ export default function ExpenditureDetailScreen() {
             <InfoRow
               label="결제일시"
               icon="time-outline"
-              editing={editing}
-              value={editing ? draft.expenditureDate : formatIsoToKorean(detail.expenditureDate)}
+              editing={false}
+              value={formatIsoToKorean(detail.expenditureDate)}
               onChangeText={(v) => updateDraft({ expenditureDate: v })}
-              placeholder="YYYY-MM-DD HH:mm"
+              placeholder="결제일시 없음"
             />
             <InfoRow
               label="메모"
