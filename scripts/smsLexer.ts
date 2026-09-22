@@ -28,7 +28,7 @@ export interface ParsedExpense {
 
 const RESERVED = new Set([
   '누적', '잔액', '승인', '취소', '사용', '일시불', '할부',
-  '결제', '출금', '입금', '체크', '신용',
+  '결제', '출금', '입금', '체크', '신용', '금액',
   'ZERO', 'PLATINUM', 'GOLD', 'CHECK',
 ]);
 

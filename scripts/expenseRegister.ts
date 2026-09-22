@@ -7,7 +7,11 @@ import {
 } from '@/services/api/expenditureApi';
 import { ClientExpenditureInputType } from '@/services/expenditureMetadata';
 import { getLocationHint } from './currentLocation';
-import { resolveLocation } from './locationPipeline';
+import {
+  canonicalStoreName,
+  namesRelated,
+  resolveLocation,
+} from './locationPipeline';
 import { haversineKm, LatLng } from './mapGeo';
 import { Place } from './placeSearch';
 
@@ -76,7 +80,8 @@ export async function resolveExpensePlace(
       loc.placeId != null &&
       loc.placeName != null &&
       loc.latitude != null &&
-      loc.longitude != null
+      loc.longitude != null &&
+      namesRelated(storeName, loc.placeName)
     ) {
       return {
         placeId: loc.placeId,
@@ -89,7 +94,7 @@ export async function resolveExpensePlace(
 
     if (loc.status === 'ambiguous' && near) {
       const pick = nearestWithin(loc.candidates, near, AUTO_PICK_RADIUS_KM);
-      if (pick) {
+      if (pick && namesRelated(storeName, pick.name)) {
         return {
           placeId: pick.id,
           placeName: pick.name,
@@ -143,7 +148,9 @@ export async function registerExpense(
         ? known
         : await resolveExpensePlace(storeName, rawSms, options);
 
-  const savedName = place?.placeName ?? storeName;
+  const savedName = place
+    ? canonicalStoreName(storeName, place.placeName)
+    : storeName;
 
   await createExpenditure(
     {
