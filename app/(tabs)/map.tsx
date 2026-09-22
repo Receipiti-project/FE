@@ -110,6 +110,8 @@ export default function MapScreen() {
 
   const [year, month, day] = dateKey.split("-").map(Number);
   const dateLabel = `${year}년 ${month}월 ${day}일`;
+  const periodLabel =
+    mode === "today" ? dateLabel : `${year}년 ${month}월 전체`;
   const topZone = zones.reduce<(typeof zones)[number] | null>(
     (best, z) => (best == null || z.visitCount > best.visitCount ? z : best),
     null
@@ -163,7 +165,9 @@ export default function MapScreen() {
           <View>
             <Text style={styles.headerTitle}>지도</Text>
             <Text style={styles.headerSub}>
-              {topZone ? `${dateLabel} · ${topZone.shortLabel} 일대` : dateLabel}
+              {mode === "zones" && topZone
+                ? `${periodLabel} · ${topZone.shortLabel} 일대`
+                : periodLabel}
             </Text>
           </View>
           <TouchableOpacity
@@ -289,7 +293,9 @@ export default function MapScreen() {
           onPress={() => setPickerOpen(false)}
         >
           <Pressable style={styles.sheet}>
-            <Text style={styles.sheetTitle}>날짜 선택</Text>
+            <Text style={styles.sheetTitle}>
+              {mode === "today" ? "날짜 선택" : "기준 월 선택"}
+            </Text>
             <Calendar
               current={dateKey}
               maxDate={localDate(new Date())}
@@ -312,7 +318,9 @@ export default function MapScreen() {
               monthFormat={"yyyy년 MM월"}
             />
             <Text style={styles.sheetHint}>
-              동선은 선택한 날짜, 히트맵·생활권·자주 가는 곳은 그 달 전체입니다.
+              {mode === "today"
+                ? "소비 동선은 선택한 날짜의 결제 순서로 표시됩니다."
+                : "월 안의 날짜를 누르면 해당 월 전체 소비를 기준으로 표시됩니다."}
             </Text>
           </Pressable>
         </Pressable>
