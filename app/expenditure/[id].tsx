@@ -14,7 +14,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
-import { formatCurrency, getCategoryByName } from "@/constants/mockData";
+import { formatCurrencyAmount, formatKRW, getCategoryByName } from "@/constants/mockData";
 import {
   getExpenditure,
   updateExpenditure,
@@ -33,7 +33,6 @@ type EditDraft = {
   expenditureDate: string;
   categoryId: number;
   memo: string;
-  currency: string;
 };
 
 function isoToLocal(iso: string): string {
@@ -80,7 +79,6 @@ function toEditDraft(detail: ExpenditureDetail): EditDraft {
     expenditureDate: isoToLocal(detail.expenditureDate),
     categoryId: detail.categoryId,
     memo: detail.memo ?? "",
-    currency: detail.currency ?? "KRW",
   };
 }
 
@@ -133,7 +131,7 @@ export default function ExpenditureDetailScreen() {
         expenditureDate: datetimeLocalToIso(draft.expenditureDate),
         categoryId: draft.categoryId,
         memo: draft.memo,
-        currency: draft.currency,
+        currency: "KRW",
       });
       Alert.alert("수정 완료", "지출 내역이 수정되었어요.", [
         { text: "확인", onPress: () => { setEditing(false); loadDetail(); } },
@@ -213,19 +211,26 @@ export default function ExpenditureDetailScreen() {
               <Text style={[styles.catBadgeText, { color: cat.color }]}>{cat.label}</Text>
             </View>
             {editing ? (
-              <TextInput
-                style={styles.amountInput}
-                value={draft.amount}
-                onChangeText={(v) => updateDraft({ amount: v.replace(/[^0-9]/g, "") })}
-                keyboardType="number-pad"
-                placeholder="0"
-              />
+              <View style={styles.amountInputRow}>
+                <TextInput
+                  style={styles.amountInput}
+                  value={
+                    Number(draft.amount) > 0
+                      ? formatCurrencyAmount(Number(draft.amount))
+                      : ""
+                  }
+                  onChangeText={(v) => updateDraft({ amount: v.replace(/[^0-9]/g, "") })}
+                  keyboardType="number-pad"
+                  placeholder="0"
+                  placeholderTextColor="#9CA3AF"
+                />
+                <Text style={styles.amountInputUnit}>원</Text>
+              </View>
             ) : (
               <Text style={styles.amountText}>
-                {formatCurrency(detail.amount, detail.currency)}
+                {formatKRW(detail.amount)}
               </Text>
             )}
-            <Text style={styles.amountCurrency}>{draft.currency}</Text>
           </View>
 
           {/* 정보 카드 */}
@@ -265,27 +270,6 @@ export default function ExpenditureDetailScreen() {
                 selectedId={draft.categoryId}
                 onSelect={(categoryId) => updateDraft({ categoryId })}
               />
-            </View>
-          )}
-
-          {/* 통화 선택 (편집 모드) */}
-          {editing && (
-            <View style={styles.card}>
-              <Text style={styles.cardLabel}>통화</Text>
-              <View style={styles.chipRow}>
-                {["KRW", "USD", "EUR", "JPY"].map((cur) => {
-                  const active = draft.currency === cur;
-                  return (
-                    <TouchableOpacity
-                      key={cur}
-                      onPress={() => updateDraft({ currency: cur })}
-                      style={[styles.chip, active && styles.chipActive]}
-                    >
-                      <Text style={[styles.chipText, active && styles.chipTextActive]}>{cur}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
             </View>
           )}
 
@@ -431,17 +415,22 @@ const styles = StyleSheet.create({
   },
   catBadgeText: { fontSize: 12, fontWeight: "700", color: "#FFFFFF" },
   amountText: { fontSize: 34, fontWeight: "800", color: "#FFFFFF" },
+  amountInputRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderBottomWidth: 2,
+    borderBottomColor: "#3B82F6",
+    minWidth: 160,
+  },
   amountInput: {
+    flex: 1,
     fontSize: 34,
     fontWeight: "800",
     color: "#FFFFFF",
-    borderBottomWidth: 2,
-    borderBottomColor: "#3B82F6",
     textAlign: "center",
-    minWidth: 140,
     paddingVertical: 4,
   },
-  amountCurrency: { fontSize: 13, color: "#9CA3AF", fontWeight: "600" },
+  amountInputUnit: { color: "#FFFFFF", fontSize: 22, fontWeight: "800" },
 
   // 공통 카드 (receipt.tsx와 동일)
   card: {
@@ -491,19 +480,6 @@ const styles = StyleSheet.create({
     borderColor: "#E5E7EB",
   },
   catChipText: { color: "#6B7280", fontSize: 12, fontWeight: "600" },
-
-  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  chip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: "#F3F4F6",
-    borderWidth: 1,
-    borderColor: "transparent",
-  },
-  chipActive: { backgroundColor: "#EFF6FF", borderColor: "#3B82F6" },
-  chipText: { color: "#6B7280", fontSize: 12, fontWeight: "600" },
-  chipTextActive: { color: "#3B82F6", fontWeight: "700" },
 
   metaCard: {
     backgroundColor: "#FFFFFF",

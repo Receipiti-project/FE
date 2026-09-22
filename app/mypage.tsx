@@ -132,7 +132,11 @@ export default function MyPageScreen() {
                       placeholder="600000"
                       placeholderTextColor="#9CA3AF"
                       style={styles.budgetInput}
-                      value={budgetInput}
+                      value={
+                        Number(budgetInput) > 0
+                          ? Number(budgetInput).toLocaleString("ko-KR")
+                          : ""
+                      }
                     />
                     <Text style={styles.budgetUnit}>원</Text>
                   </View>

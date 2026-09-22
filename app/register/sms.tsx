@@ -41,6 +41,22 @@ import { Place } from '../../scripts/placeSearch';
 const HITSLOP = { top: 12, bottom: 12, left: 12, right: 12 } as const;
 const ACCENT = '#F59E0B';
 
+function formatPaymentDate(value: string | null): string {
+  if (!value) return '';
+
+  const match = value.match(
+    /^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})/
+  );
+  if (!match) return value;
+
+  const [, year, month, day, rawHour, minute] = match;
+  const hour = Number(rawHour);
+  const period = hour < 12 ? '오전' : '오후';
+  const displayHour = hour % 12 || 12;
+
+  return `${Number(year)}년 ${Number(month)}월 ${Number(day)}일 ${period} ${displayHour}시 ${minute}분`;
+}
+
 type Step = 'input' | 'scan';
 
 type Draft = {
@@ -618,6 +634,7 @@ export default function SmsScreen() {
             <FieldEditable
               label="결제금액"
               value={draft.amount != null ? String(draft.amount) : ''}
+              displayValue={draft.amount != null ? formatKRW(draft.amount) : ''}
               onChange={(v) =>
                 updateDraft({
                   amount: v === '' ? null : parseInt(v.replace(/[^0-9]/g, ''), 10) || 0,
@@ -635,6 +652,7 @@ export default function SmsScreen() {
             <FieldEditable
               label="결제일시"
               value={draft.paymentDate ?? ''}
+              displayValue={formatPaymentDate(draft.paymentDate)}
               onChange={(v) => updateDraft({ paymentDate: v || null })}
               placeholder="YYYY-MM-DDTHH:mm:ss"
             />
@@ -775,7 +793,7 @@ function ScanCard({
   const cat = draft.category
     ? getCategory(draft.category.toLowerCase() as CategoryId)
     : null;
-  const dateText = draft.paymentDate?.slice(5, 16).replace('T', ' ');
+  const dateText = formatPaymentDate(draft.paymentDate);
 
   return (
     <View
@@ -1006,6 +1024,7 @@ function ScanCard({
 function FieldEditable({
   label,
   value,
+  displayValue,
   onChange,
   placeholder,
   multiline,
@@ -1013,11 +1032,14 @@ function FieldEditable({
 }: {
   label: string;
   value: string;
+  displayValue?: string;
   onChange: (v: string) => void;
   placeholder?: string;
   multiline?: boolean;
   keyboardType?: 'default' | 'number-pad';
 }) {
+  const [focused, setFocused] = useState(false);
+
   return (
     <View style={{ marginBottom: 12 }}>
       <Text style={styles.fieldLabel}>{label}</Text>
@@ -1026,8 +1048,10 @@ function FieldEditable({
           styles.input,
           multiline && { minHeight: 60, textAlignVertical: 'top' },
         ]}
-        value={value}
+        value={focused ? value : (displayValue ?? value)}
         onChangeText={onChange}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
         placeholder={placeholder}
         placeholderTextColor="#9CA3AF"
         multiline={multiline}

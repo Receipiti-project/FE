@@ -19,7 +19,6 @@ export type ExpenseDraft = {
   paymentDate: string | null;
   category: string | null;
   memo: string | null;
-  currency?: string | null;
 };
 
 const CATEGORY_IDS: CategoryId[] = CATEGORIES.map((c) => c.id);
@@ -153,7 +152,7 @@ export async function registerExpense(
       amount,
       expenditureDate,
       memo: draft.memo?.trim() || undefined,
-      currency: draft.currency?.toUpperCase() || 'KRW',
+      currency: 'KRW',
       ...(place && {
         placeId: place.placeId,
         address: place.address,

@@ -18,7 +18,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { styles } from "@/styles/register/captureStyles";
 import {
-  formatCurrency,
+  formatCurrencyAmount,
+  formatKRW,
   getCategoryByName,
 } from "@/constants/mockData";
 import {
@@ -37,14 +38,54 @@ import {
   resolveCategoryRecommendation,
 } from "@/services/api/categoryApi";
 import { CategoryPicker } from "@/components/category-picker";
+import PlacePicker from "@/components/location/PlacePicker";
+import {
+  ResolvedPlace,
+  resolveExpensePlace,
+} from "@/scripts/expenseRegister";
+import { Place } from "@/scripts/placeSearch";
 
 const HITSLOP = { top: 12, bottom: 12, left: 12, right: 12 } as const;
 
 type Step = "idle" | "analyzing" | "review" | "saving";
 
+function parsePaymentDate(value?: string): Date | null {
+  if (!value) return null;
+  const raw = value.trim();
+  const shortDateTime = raw.match(
+    /^(\d{1,2})[./-](\d{1,2})\s+(\d{1,2}):(\d{2})$/
+  );
+  const withYear = shortDateTime
+    ? `${new Date().getFullYear()}-${shortDateTime[1].padStart(2, "0")}-${shortDateTime[2].padStart(2, "0")}T${shortDateTime[3].padStart(2, "0")}:${shortDateTime[4]}:00`
+    : raw;
+  const normalized = (/^\d{4}-\d{2}-\d{2}$/.test(withYear) ? `${withYear}T00:00:00` : withYear).replace(
+    /^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})/,
+    "$1T$2"
+  );
+  const parsed = new Date(normalized);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function localPaymentIso(date: Date): string {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return (
+    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
+    `T${pad(date.getHours())}:${pad(date.getMinutes())}:00`
+  );
+}
+
+function paymentDateLabel(date: Date): string {
+  const hour = date.getHours();
+  const period = hour < 12 ? "오전" : "오후";
+  const displayHour = hour % 12 || 12;
+  const minute = String(date.getMinutes()).padStart(2, "0");
+  return `${date.getMonth() + 1}월 ${date.getDate()}일 ${period} ${displayHour}시 ${minute}분`;
+}
+
 type DraftPayment = {
   id: string;
   store: string;
+  baseStore: string;
   amount: number;
   paidAt?: string;
   paidAtIso?: string;
@@ -56,8 +97,9 @@ type DraftPayment = {
   categoryMatchedCount: number;
   categoryAutoApplied: boolean;
   userSelectedCategory: boolean;
-  currency: string;
   address?: string;
+  place: ResolvedPlace | null;
+  placeDropped: boolean;
   include: boolean;
   expanded: boolean;
 };
@@ -93,6 +135,7 @@ export default function CaptureScreen() {
   const [drafts, setDrafts] = useState<DraftPayment[]>([]);
   const [pasteOpen, setPasteOpen] = useState(false);
   const [pasteText, setPasteText] = useState("");
+  const [pickerDraftId, setPickerDraftId] = useState<string | null>(null);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -112,6 +155,7 @@ export default function CaptureScreen() {
     setDrafts([]);
     setSource("unknown");
     setSourceLabel("");
+    setPickerDraftId(null);
   };
 
   const applyOcrResult = async (res: CaptureOcrResult) => {
@@ -119,9 +163,16 @@ export default function CaptureScreen() {
     setSourceLabel(res.sourceLabel);
     const nextDrafts = await Promise.all(
       res.payments.map(async (p, i) => {
-        const recommendation = p.store
-          ? await getCategoryRecommendation(p.store).catch(() => null)
-          : null;
+        const recognizedDate =
+          parsePaymentDate(p.paidAtIso) ?? parsePaymentDate(p.paidAt);
+        const [recommendation, place] = await Promise.all([
+          p.store
+            ? getCategoryRecommendation(p.store).catch(() => null)
+            : Promise.resolve(null),
+          p.store
+            ? resolveExpensePlace(p.store)
+            : Promise.resolve(null),
+        ]);
         const decision = resolveCategoryRecommendation(
           recommendation,
           categories
@@ -129,10 +180,11 @@ export default function CaptureScreen() {
 
         return {
           id: `p_${i}`,
-          store: p.store,
+          store: place?.placeName ?? p.store,
+          baseStore: p.store,
           amount: p.amount,
-          paidAt: p.paidAt,
-          paidAtIso: p.paidAtIso,
+          paidAt: recognizedDate ? paymentDateLabel(recognizedDate) : p.paidAt,
+          paidAtIso: recognizedDate ? localPaymentIso(recognizedDate) : undefined,
           method: p.method ?? "카드",
           categoryId: decision.selectedCategoryId,
           initialCategoryId: decision.recommendedCategoryId,
@@ -141,8 +193,9 @@ export default function CaptureScreen() {
           categoryMatchedCount: decision.matchedCount,
           categoryAutoApplied: decision.autoApplicable,
           userSelectedCategory: false,
-          currency: p.currency ?? "KRW",
-          address: p.address,
+          address: place?.address ?? p.address,
+          place,
+          placeDropped: false,
           include: true,
           expanded: false,
         };
@@ -226,7 +279,60 @@ export default function CaptureScreen() {
   };
 
   const updateDraft = (id: string, patch: Partial<DraftPayment>) => {
-    setDrafts((prev) => prev.map((d) => (d.id === id ? { ...d, ...patch } : d)));
+    setDrafts((prev) => prev.map((d) => {
+      if (d.id !== id) return d;
+      if (patch.store != null && patch.store !== d.store) {
+        return {
+          ...d,
+          ...patch,
+          baseStore: patch.store,
+          address: undefined,
+          place: null,
+          placeDropped: false,
+        };
+      }
+      return { ...d, ...patch };
+    }));
+  };
+
+  const applyPlace = (picked: Place) => {
+    if (!pickerDraftId) return;
+    setDrafts((prev) => prev.map((draft) => {
+      if (draft.id !== pickerDraftId) return draft;
+      const place: ResolvedPlace = {
+        placeId: picked.id,
+        placeName: picked.name,
+        address: picked.roadAddress || picked.address,
+        latitude: picked.latitude,
+        longitude: picked.longitude,
+      };
+      return {
+        ...draft,
+        store: picked.name,
+        address: place.address,
+        place,
+        placeDropped: false,
+      };
+    }));
+    setPickerDraftId(null);
+  };
+
+  const dropPlace = () => {
+    if (!pickerDraftId) return;
+    setDrafts((prev) => prev.map((draft) => {
+      if (draft.id !== pickerDraftId) return draft;
+      return {
+        ...draft,
+        store:
+          draft.place && draft.store === draft.place.placeName
+            ? draft.baseStore
+            : draft.store,
+        address: undefined,
+        place: null,
+        placeDropped: true,
+      };
+    }));
+    setPickerDraftId(null);
   };
 
   const removeDraft = (id: string) => {
@@ -240,14 +346,11 @@ export default function CaptureScreen() {
   };
 
   const selectedDrafts = drafts.filter((d) => d.include);
-  const selectedTotals = [...selectedDrafts.reduce((totals, draft) => {
-    const currency = draft.currency || "KRW";
-    totals.set(currency, (totals.get(currency) ?? 0) + draft.amount);
-    return totals;
-  }, new Map<string, number>()).entries()];
-  const selectedTotalLabel = selectedTotals
-    .map(([currency, amount]) => formatCurrency(amount, currency))
-    .join(" · ");
+  const selectedTotal = selectedDrafts.reduce(
+    (total, draft) => total + draft.amount,
+    0
+  );
+  const selectedTotalLabel = formatKRW(selectedTotal);
 
   const onSave = async () => {
     if (selectedDrafts.length === 0) {
@@ -259,23 +362,43 @@ export default function CaptureScreen() {
     if (selectedDrafts.some((draft) => draft.amount <= 0)) {
       return Alert.alert("입력 확인", "금액을 올바르게 입력해주세요.");
     }
+    if (selectedDrafts.some((draft) => !draft.paidAtIso)) {
+      return Alert.alert(
+        "결제 일시 확인",
+        "인식하지 못한 결제 일시가 있어요. 각 항목을 펼쳐 날짜와 시간을 확인해주세요."
+      );
+    }
     if (selectedDrafts.some((draft) => !draft.categoryId)) {
       return Alert.alert("입력 확인", "카테고리를 선택해주세요.");
     }
     setStep("saving");
     try {
+      const draftsWithPlaces = await Promise.all(
+        selectedDrafts.map(async (draft) => {
+          if (draft.placeDropped) return { draft, place: null };
+          if (draft.place?.placeName === draft.store) {
+            return { draft, place: draft.place };
+          }
+          const place = await resolveExpensePlace(draft.store);
+          return { draft, place };
+        })
+      );
+
       await saveTransactions(
         "capture",
-        selectedDrafts.map((d) => ({
-          store: d.store,
+        draftsWithPlaces.map(({ draft: d, place }) => ({
+          store: place?.placeName ?? d.store,
           amount: d.amount,
           paidAt: d.paidAt,
           paidAtIso: d.paidAtIso,
           method: d.method,
           categoryId: d.userSelectedCategory ? d.categoryId : undefined,
           defaultCategoryId: d.categoryAutoApplied ? d.categoryId : undefined,
-          currency: d.currency,
-          address: d.address,
+          currency: "KRW",
+          placeId: place?.placeId,
+          address: place?.address ?? (d.placeDropped ? undefined : d.address),
+          latitude: place?.latitude,
+          longitude: place?.longitude,
           imageUri,
           source,
           userEditedCategory: d.userSelectedCategory,
@@ -420,6 +543,7 @@ export default function CaptureScreen() {
                 onToggleExpand={() => toggleExpand(d.id)}
                 onChange={(patch) => updateDraft(d.id, patch)}
                 onRemove={() => removeDraft(d.id)}
+                onEditLocation={() => setPickerDraftId(d.id)}
                 categories={categories}
               />
             ))}
@@ -463,6 +587,16 @@ export default function CaptureScreen() {
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+      <PlacePicker
+        visible={pickerDraftId != null}
+        storeName={
+          drafts.find((draft) => draft.id === pickerDraftId)?.baseStore ?? ""
+        }
+        onConfirm={applyPlace}
+        onOnlinePurchase={dropPlace}
+        onSkip={dropPlace}
+        onClose={() => setPickerDraftId(null)}
+      />
     </SafeAreaView>
   );
 }
@@ -473,6 +607,7 @@ function PaymentCard({
   onToggleExpand,
   onChange,
   onRemove,
+  onEditLocation,
   categories,
 }: {
   draft: DraftPayment;
@@ -480,6 +615,7 @@ function PaymentCard({
   onToggleExpand: () => void;
   onChange: (patch: Partial<DraftPayment>) => void;
   onRemove: () => void;
+  onEditLocation: () => void;
   categories: CategoryApiItem[];
 }) {
   const selectedCategory = categories.find(
@@ -514,7 +650,7 @@ function PaymentCard({
               {draft.store || "(가맹점명 없음)"}
             </Text>
             <Text style={styles.payAmount}>
-              {formatCurrency(draft.amount, draft.currency)}
+              {formatKRW(draft.amount)}
             </Text>
           </View>
           <View style={styles.tagRow}>
@@ -584,18 +720,62 @@ function PaymentCard({
             />
           </View>
           <View style={{ marginBottom: 10 }}>
+            <Text style={styles.fieldLabel}>위치</Text>
+            <TouchableOpacity
+              style={styles.locationButton}
+              onPress={onEditLocation}
+            >
+              <Ionicons
+                name={draft.place ? "location" : "location-outline"}
+                size={15}
+                color={draft.place ? "#3B82F6" : "#9CA3AF"}
+              />
+              <Text
+                style={draft.place ? styles.locationText : styles.locationEmptyText}
+                numberOfLines={2}
+              >
+                {draft.place
+                  ? (draft.address ?? "위치를 찾았어요")
+                  : "위치가 지정되지 않았어요"}
+              </Text>
+              <Text style={styles.locationAction}>
+                {draft.place ? "변경" : "지정"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+          <View style={{ marginBottom: 10 }}>
+            <Text style={styles.fieldLabel}>결제 일시</Text>
+            <View style={styles.paymentDateRow}>
+              <Ionicons name="time-outline" size={17} color="#6B7280" />
+              <Text style={styles.paymentDateText}>
+                {draft.paidAt ?? "결제 일시를 인식하지 못했어요"}
+              </Text>
+            </View>
+            {!draft.paidAtIso && (
+              <Text style={styles.dateTimeWarning}>
+                {draft.paidAt
+                  ? `인식값 “${draft.paidAt}”을 날짜 형식으로 확인하지 못했어요.`
+                  : "결제 일시를 인식하지 못했어요."}
+              </Text>
+            )}
+          </View>
+          <View style={{ marginBottom: 10 }}>
             <Text style={styles.fieldLabel}>금액</Text>
-            <TextInput
-              style={styles.input}
-              value={String(draft.amount)}
-              onChangeText={(v) =>
-                onChange({
-                  amount: parseInt(v.replace(/[^0-9]/g, ""), 10) || 0,
-                })
-              }
-              keyboardType="number-pad"
-              placeholder="0"
-            />
+            <View style={styles.amountInputShell}>
+              <TextInput
+                style={styles.amountInput}
+                value={draft.amount > 0 ? formatCurrencyAmount(draft.amount) : ""}
+                onChangeText={(v) =>
+                  onChange({
+                    amount: parseInt(v.replace(/[^0-9]/g, ""), 10) || 0,
+                  })
+                }
+                keyboardType="number-pad"
+                placeholder="0"
+                placeholderTextColor="#9CA3AF"
+              />
+              <Text style={styles.amountUnit}>원</Text>
+            </View>
           </View>
           <View style={{ marginBottom: 10 }}>
             <Text style={styles.fieldLabel}>결제수단</Text>

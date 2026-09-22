@@ -24,6 +24,7 @@ import {
   formatTimeReal,
 } from "@/hooks/useExpenditures";
 import { useBudget } from "@/contexts/BudgetContext";
+import { expenditureDateParam } from "@/services/api/expenditureApi";
 
 const BLUE = "#3B82F6";
 
@@ -50,7 +51,6 @@ export default function HomeScreen() {
     todayCount,
     recentItems,
     byCategoryReport,
-    refetch,
   } = useExpenditures(4);
 
   const usedRatio = Math.min(totalAmount / monthlyBudget, 1);
@@ -62,14 +62,12 @@ export default function HomeScreen() {
       <ScrollView contentContainerStyle={styles.scroll}>
         {/* 헤더 */}
         <View style={styles.headerRow}>
-          <TouchableOpacity
-            accessibilityLabel="알림"
-            accessibilityRole="button"
-            style={styles.headerButton}
-            onPress={refetch}
-          >
-            <Ionicons name="notifications-outline" size={22} color="#374151" />
-          </TouchableOpacity>
+          <View style={styles.brandGroup}>
+            <View style={styles.brandMark}>
+              <Ionicons name="wallet-outline" size={21} color={BLUE} />
+            </View>
+            <Text style={styles.brandText}>Receipiti</Text>
+          </View>
           <TouchableOpacity
             accessibilityLabel="마이페이지"
             accessibilityRole="button"
@@ -130,9 +128,19 @@ export default function HomeScreen() {
               )}
               <Text style={styles.todayMeta}>결제 {todayCount}건</Text>
             </View>
-            <View style={styles.todayIconWrap}>
+            <TouchableOpacity
+              accessibilityLabel="오늘 가계부 보기"
+              accessibilityRole="button"
+              style={styles.todayIconWrap}
+              onPress={() =>
+                router.push({
+                  pathname: "/(tabs)/budget",
+                  params: { date: expenditureDateParam() },
+                })
+              }
+            >
               <Ionicons name="today-outline" size={28} color={BLUE} />
-            </View>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -282,7 +290,10 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F9FAFB" },
   scroll: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 20 },
-  headerRow: { flexDirection: "row", justifyContent: "flex-end", alignItems: "center", gap: 8, marginBottom: 20 },
+  headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 20 },
+  brandGroup: { flexDirection: "row", alignItems: "center", gap: 9 },
+  brandMark: { width: 38, height: 38, borderRadius: 12, backgroundColor: "#EFF6FF", alignItems: "center", justifyContent: "center" },
+  brandText: { color: "#111827", fontSize: 19, fontWeight: "800", letterSpacing: -0.3 },
   headerButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: "#FFFFFF", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#F3F4F6" },
   spendCard: { backgroundColor: "#111827", borderRadius: 20, padding: 20 },
   spendLabel: { color: "#9CA3AF", fontSize: 13, fontWeight: "600" },

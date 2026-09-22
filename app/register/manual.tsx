@@ -14,7 +14,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { formatCurrencyAmount } from "@/constants/mockData";
+import { formatCurrencyAmount, formatKRW } from "@/constants/mockData";
 import {
   createExpenditure,
   nowAsDatetimeLocal,
@@ -31,8 +31,6 @@ import DateTimePicker from "@react-native-community/datetimepicker";
 
 const HITSLOP = { top: 12, bottom: 12, left: 12, right: 12 } as const;
 
-const CURRENCY_OPTIONS = ["KRW", "USD", "EUR", "JPY"] as const;
-type Currency = (typeof CURRENCY_OPTIONS)[number];
 type PickerMode = "date" | "time";
 
 function asDate(value: string): Date {
@@ -59,7 +57,6 @@ type Form = {
   categoryAutoApplied: boolean;
   userEditedCategory: boolean;
   memo: string;
-  currency: Currency;
 };
 
 const DEFAULT_FORM: Form = {
@@ -73,7 +70,6 @@ const DEFAULT_FORM: Form = {
   categoryAutoApplied: false,
   userEditedCategory: false,
   memo: "",
-  currency: "KRW",
 };
 
 export default function ManualScreen() {
@@ -132,7 +128,7 @@ export default function ManualScreen() {
         amount,
         expenditureDate,
         memo: form.memo.trim() || undefined,
-        currency: form.currency,
+        currency: "KRW",
       });
 
       Alert.alert("등록 완료", "가계부에 추가되었어요.", [
@@ -156,13 +152,19 @@ export default function ManualScreen() {
 
   const changeDateTime = (mode: PickerMode, selected?: Date) => {
     if (!selected) return;
-    const next = asDate(form.expenditureDate);
-    if (mode === "date") {
-      next.setFullYear(selected.getFullYear(), selected.getMonth(), selected.getDate());
-    } else {
-      next.setHours(selected.getHours(), selected.getMinutes(), 0, 0);
-    }
-    update({ expenditureDate: asDatetimeLocal(next) });
+    setForm((previous) => {
+      const next = asDate(previous.expenditureDate);
+      if (mode === "date") {
+        next.setFullYear(
+          selected.getFullYear(),
+          selected.getMonth(),
+          selected.getDate()
+        );
+      } else {
+        next.setHours(selected.getHours(), selected.getMinutes(), 0, 0);
+      }
+      return { ...previous, expenditureDate: asDatetimeLocal(next) };
+    });
   };
 
   return (
@@ -205,10 +207,10 @@ export default function ManualScreen() {
           {/* 금액 */}
           <View style={styles.card}>
             <FieldLabel label="금액" required />
-            <View style={styles.amountRow}>
+            <View style={styles.amountInputShell}>
               <TextInput
-                style={[styles.input, styles.amountInput]}
-                value={form.amount}
+                style={styles.amountInput}
+                value={amountNum > 0 ? formatCurrencyAmount(amountNum) : ""}
                 onChangeText={(v) =>
                   update({ amount: v.replace(/[^0-9]/g, "") })
                 }
@@ -216,32 +218,11 @@ export default function ManualScreen() {
                 placeholder="0"
                 placeholderTextColor="#9CA3AF"
               />
-              {/* 통화 선택 */}
-              <View style={styles.currencyRow}>
-                {CURRENCY_OPTIONS.map((c) => (
-                  <TouchableOpacity
-                    key={c}
-                    onPress={() => update({ currency: c })}
-                    style={[
-                      styles.currencyChip,
-                      form.currency === c && styles.currencyChipActive,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.currencyText,
-                        form.currency === c && styles.currencyTextActive,
-                      ]}
-                    >
-                      {c}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+              <Text style={styles.amountUnit}>원</Text>
             </View>
             {amountNum > 0 && (
               <Text style={styles.amountPreview}>
-                {formatCurrencyAmount(amountNum, form.currency)} {form.currency}
+                {formatKRW(amountNum)}
               </Text>
             )}
           </View>
@@ -376,7 +357,7 @@ export default function ManualScreen() {
                 <Ionicons name="checkmark-circle" size={18} color="#FFFFFF" />
                 <Text style={styles.saveBtnText}>
                   {amountNum > 0
-                    ? `${formatCurrencyAmount(amountNum, form.currency)} ${form.currency} 등록`
+                    ? `${formatKRW(amountNum)} 등록`
                     : "등록"}
                 </Text>
               </>
@@ -443,12 +424,25 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: "#111827",
   },
-  amountRow: { gap: 10 },
+  amountInputShell: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F9FAFB",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    borderRadius: 10,
+    paddingRight: 12,
+  },
   amountInput: {
+    flex: 1,
     fontSize: 22,
     fontWeight: "800",
     textAlign: "right",
+    color: "#111827",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
   },
+  amountUnit: { color: "#111827", fontSize: 16, fontWeight: "700" },
   amountPreview: {
     textAlign: "right",
     color: "#3B82F6",
@@ -456,25 +450,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: 6,
   },
-  currencyRow: {
-    flexDirection: "row",
-    gap: 6,
-    flexWrap: "wrap",
-  },
-  currencyChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: "#F3F4F6",
-    borderWidth: 1,
-    borderColor: "transparent",
-  },
-  currencyChipActive: {
-    backgroundColor: "#EFF6FF",
-    borderColor: "#3B82F6",
-  },
-  currencyText: { color: "#6B7280", fontSize: 12, fontWeight: "600" },
-  currencyTextActive: { color: "#3B82F6", fontWeight: "700" },
   inputHint: {
     color: "#9CA3AF",
     fontSize: 11,

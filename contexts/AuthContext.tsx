@@ -4,6 +4,7 @@ import {
   exchangeLoginCode,
   restoreAuthToken,
 } from "@/services/auth";
+import { clearMonthlyReportCache } from "@/services/monthlyReportCache";
 
 type AuthContextValue = {
   ready: boolean;
@@ -34,6 +35,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       },
       signOut: async () => {
         await clearAuthToken();
+        clearMonthlyReportCache();
         setSignedIn(false);
       },
     }),
