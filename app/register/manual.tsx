@@ -156,13 +156,19 @@ export default function ManualScreen() {
 
   const changeDateTime = (mode: PickerMode, selected?: Date) => {
     if (!selected) return;
-    const next = asDate(form.expenditureDate);
-    if (mode === "date") {
-      next.setFullYear(selected.getFullYear(), selected.getMonth(), selected.getDate());
-    } else {
-      next.setHours(selected.getHours(), selected.getMinutes(), 0, 0);
-    }
-    update({ expenditureDate: asDatetimeLocal(next) });
+    setForm((previous) => {
+      const next = asDate(previous.expenditureDate);
+      if (mode === "date") {
+        next.setFullYear(
+          selected.getFullYear(),
+          selected.getMonth(),
+          selected.getDate()
+        );
+      } else {
+        next.setHours(selected.getHours(), selected.getMinutes(), 0, 0);
+      }
+      return { ...previous, expenditureDate: asDatetimeLocal(next) };
+    });
   };
 
   return (
