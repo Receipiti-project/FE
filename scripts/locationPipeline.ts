@@ -193,7 +193,8 @@ export async function resolveLocation(
   const candidates = preferSpendingPlaces(places);
   const exactSingle = totalCount === 1;
   const byBranch = tokens.length > 0 ? pickByBranch(candidates, tokens) : null;
-  const best = byBranch ?? (exactSingle && hint ? candidates[0] : null);
+  // 검색 결과가 정확히 한 곳이면 GPS 권한/힌트가 없어도 안전하게 확정한다.
+  const best = byBranch ?? (exactSingle ? candidates[0] : null);
 
   if (!best) {
     return {
