@@ -23,9 +23,7 @@ export type ExpenseDraft = {
   paymentDate: string | null;
   category: string | null;
   memo: string | null;
-  /** 사용자가 직접 고른 카테고리 */
   categoryId?: number | null;
-  /** 추천이 자동 적용된 카테고리 */
   defaultCategoryId?: number | null;
 };
 

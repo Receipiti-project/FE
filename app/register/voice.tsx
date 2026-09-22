@@ -97,6 +97,8 @@ export default function VoiceScreen() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const runRef = useRef(0);
+  const classifyRunRef = useRef(0);
+  const userEditedRef = useRef(false);
 
   useEffect(() => {
     let alive = true;
@@ -111,7 +113,6 @@ export default function VoiceScreen() {
         allowsRecording: true,
         playsInSilentMode: true,
       });
-      await audioRecorder.prepareToRecordAsync();
     })().catch((e) => {
       if (alive) Alert.alert('녹음 준비 실패', e?.message ?? '잠시 후 다시 시도해주세요.');
     });
@@ -138,6 +139,8 @@ export default function VoiceScreen() {
 
   const reset = () => {
     runRef.current += 1;
+    classifyRunRef.current += 1;
+    userEditedRef.current = false;
     setStep('idle');
     setVoiceData(null);
     setPlace(null);
@@ -158,6 +161,7 @@ export default function VoiceScreen() {
 
     try {
       await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+      await audioRecorder.prepareToRecordAsync();
       audioRecorder.record();
       setElapsed(0);
       setRecordingOpen(true);
@@ -170,12 +174,7 @@ export default function VoiceScreen() {
   const cancelRecording = async () => {
     stopTimer();
     setRecordingOpen(false);
-    try {
-      await audioRecorder.stop();
-      await audioRecorder.prepareToRecordAsync();
-    } catch {
-      /* 녹음 취소 중 오류는 무시 */
-    }
+    await audioRecorder.stop().catch(() => undefined);
   };
 
   const finishRecording = async () => {
@@ -222,7 +221,6 @@ export default function VoiceScreen() {
       });
       setStep('review');
       if (storeName) void classifyStore(storeName);
-      await audioRecorder.prepareToRecordAsync();
     } catch (e: any) {
       if (tickRef.current) {
         clearInterval(tickRef.current);
@@ -240,17 +238,19 @@ export default function VoiceScreen() {
     const name = storeName.trim();
     if (!name) return;
 
+    const runId = ++classifyRunRef.current;
     const recommendation = await getCategoryRecommendation(name).catch(() => null);
-    const decision = resolveCategoryRecommendation(recommendation, categories);
+    if (runId !== classifyRunRef.current) return;
 
+    const decision = resolveCategoryRecommendation(recommendation, categories);
     setRecommendedCategoryId(decision.recommendedCategoryId);
     setMatchedCount(decision.matchedCount);
-    setVoiceData((prev) => {
-      if (!prev) return prev;
-      if (userEditedCategory || decision.selectedCategoryId == null) return prev;
-      return { ...prev, categoryId: decision.selectedCategoryId };
-    });
-    setCategoryAutoApplied(!userEditedCategory && decision.selectedCategoryId != null);
+    if (userEditedRef.current) return;
+
+    setVoiceData((prev) =>
+      prev ? { ...prev, categoryId: decision.selectedCategoryId } : prev
+    );
+    setCategoryAutoApplied(decision.selectedCategoryId != null);
   };
 
   const updateVoiceData = (patch: Partial<VoiceData>) => {
@@ -524,6 +524,7 @@ export default function VoiceScreen() {
             }
             recommendedCategoryId={recommendedCategoryId}
             onSelect={(categoryId) => {
+              userEditedRef.current = true;
               updateVoiceData({ categoryId });
               setCategoryAutoApplied(false);
               setUserEditedCategory(true);

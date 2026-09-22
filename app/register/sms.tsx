@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -17,7 +17,12 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { CategoryId, formatKRW, getCategory } from '../../constants/mockData';
+import {
+  CategoryId,
+  formatKRW,
+  getCategory,
+  getCategoryByName,
+} from '../../constants/mockData';
 import { CategoryPicker } from '../../components/category-picker';
 import { useCategories } from '../../contexts/CategoryContext';
 import {
@@ -124,6 +129,9 @@ export default function SmsScreen() {
   const [scanEdits, setScanEdits] = useState<Record<string, ScanEdit>>({});
   const [scanPickerFor, setScanPickerFor] = useState<string | null>(null);
 
+  const classifyRunRef = useRef(0);
+  const userEditedRef = useRef(false);
+
   const { messages: scanned, scanning, scan } = useAndroidSms();
 
   useSharedSms((text) => {
@@ -146,6 +154,7 @@ export default function SmsScreen() {
     setRecommendedCategoryId(null);
     setCategoryAutoApplied(false);
     setUserEditedCategory(false);
+    userEditedRef.current = false;
     setMatchedCount(0);
     try {
       const r = await smsToExpense(t);
@@ -181,17 +190,19 @@ export default function SmsScreen() {
     const name = storeName.trim();
     if (!name) return;
 
+    const runId = ++classifyRunRef.current;
     const recommendation = await getCategoryRecommendation(name).catch(() => null);
-    const decision = resolveCategoryRecommendation(recommendation, categories);
+    if (runId !== classifyRunRef.current) return;
 
+    const decision = resolveCategoryRecommendation(recommendation, categories);
     setRecommendedCategoryId(decision.recommendedCategoryId);
     setMatchedCount(decision.matchedCount);
-    setDraft((prev) => {
-      if (!prev) return prev;
-      if (userEditedCategory || decision.selectedCategoryId == null) return prev;
-      return { ...prev, categoryId: decision.selectedCategoryId };
-    });
-    setCategoryAutoApplied(!userEditedCategory && decision.selectedCategoryId != null);
+    if (userEditedRef.current) return;
+
+    setDraft((prev) =>
+      prev ? { ...prev, categoryId: decision.selectedCategoryId } : prev
+    );
+    setCategoryAutoApplied(decision.selectedCategoryId != null);
   };
 
   const openPaste = () => {
@@ -222,6 +233,7 @@ export default function SmsScreen() {
     setRecommendedCategoryId(null);
     setCategoryAutoApplied(false);
     setUserEditedCategory(false);
+    userEditedRef.current = false;
     setMatchedCount(0);
     setStep('input');
   };
@@ -497,7 +509,6 @@ export default function SmsScreen() {
     }
   };
 
-  // ─── scan ───
   if (step === 'scan') {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
@@ -642,7 +653,6 @@ export default function SmsScreen() {
     );
   }
 
-  // ─── input / review ───
   const missing = draft ? missingRequiredFields(draft) : [];
   const features = Platform.OS === 'android' ? FEATURES : IOS_FEATURES;
   const selectedCategoryId =
@@ -750,6 +760,7 @@ export default function SmsScreen() {
                 selectedId={selectedCategoryId}
                 recommendedCategoryId={recommendedCategoryId}
                 onSelect={(categoryId) => {
+                  userEditedRef.current = true;
                   updateDraft({ categoryId });
                   setCategoryAutoApplied(false);
                   setUserEditedCategory(true);
@@ -1018,9 +1029,17 @@ function ScanCard({
   const { categories } = useCategories();
   const { draft } = item;
   const ready = !item.parsing && !item.failed;
-  const cat = draft.category
-    ? getCategory(draft.category.toLowerCase() as CategoryId)
-    : null;
+  const selectedCategoryId =
+    draft.categoryId ?? enumCategoryId(categories, draft.category);
+  const selectedCategory = categories.find(
+    (c) => c.categoryId === selectedCategoryId
+  );
+  const cat = selectedCategory
+    ? getCategoryByName(selectedCategory.name)
+    : draft.category
+      ? getCategory(draft.category.toLowerCase() as CategoryId)
+      : null;
+  const catLabel = selectedCategory?.name ?? cat?.label;
   const dateText = formatPaymentDate(draft.paymentDate);
 
   return (
@@ -1074,7 +1093,7 @@ function ScanCard({
                 >
                   <Ionicons name={cat.icon} size={11} color={cat.color} />
                   <Text style={[styles.payTagText, { color: cat.color }]}>
-                    {cat.label}
+                    {catLabel}
                   </Text>
                 </View>
               ) : (
@@ -1152,7 +1171,7 @@ function ScanCard({
             <Text style={styles.fieldLabel}>카테고리</Text>
             <CategoryPicker
               compact
-              selectedId={draft.categoryId ?? enumCategoryId(categories, draft.category)}
+              selectedId={selectedCategoryId}
               onSelect={(categoryId) => onChange({ categoryId })}
             />
           </View>

@@ -61,11 +61,19 @@ export function stripBranchName(storeName: string): string {
   return parts.slice(0, -1).join(' ');
 }
 
+function compareName(name: string): string {
+  return squash(name)
+    .replace(/\(주\)|주식회사/g, '')
+    .replace(/[^0-9A-Za-z가-힣]/g, '')
+    .toUpperCase();
+}
+
 export function namesRelated(storeName: string, placeName: string): boolean {
-  const a = squash(storeName).toUpperCase();
-  const b = squash(placeName).toUpperCase();
+  const a = compareName(storeName);
+  const b = compareName(placeName);
   if (a.length < 2 || b.length < 2) return false;
   if (a.includes(b) || b.includes(a)) return true;
+  if (a[0] !== b[0]) return false;
   for (let i = 0; i + 2 <= a.length; i++) {
     if (b.includes(a.slice(i, i + 2))) return true;
   }
@@ -73,9 +81,9 @@ export function namesRelated(storeName: string, placeName: string): boolean {
 }
 
 export function canonicalStoreName(storeName: string, placeName: string): string {
-  const a = squash(storeName).toUpperCase();
-  const b = squash(placeName).toUpperCase();
-  return b.includes(a) ? placeName : storeName;
+  return compareName(placeName).includes(compareName(storeName))
+    ? placeName
+    : storeName;
 }
 
 function matchesBranch(place: Place, tokens: string[]): boolean {
