@@ -1,4 +1,17 @@
+import { CategoryApiItem } from '@/services/api/categoryApi';
 import { CategoryType } from './types';
+
+export function enumCategoryId(
+  categories: CategoryApiItem[],
+  category: string | null | undefined
+): number | null {
+  if (!category) return null;
+  const type = category.toUpperCase();
+  return (
+    categories.find((c) => !c.custom && c.categoryType === type)?.categoryId ??
+    null
+  );
+}
 
 export function guessCategory(storeName: string): CategoryType | null {
   const name = storeName.toLowerCase();
