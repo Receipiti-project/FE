@@ -75,6 +75,13 @@ export type UseExpendituresResult = {
   dayOfWeekPattern: DayOfWeekItem[];
 };
 
+export type ExpenditureRangeResult = {
+  loading: boolean;
+  error: string | null;
+  items: DisplayTransaction[];
+  refetch: () => void;
+};
+
 type ExpenditurePeriod = {
   year: number;
   month: number;
@@ -298,6 +305,77 @@ export function useExpenditures(
     refetch: fetch,
     ...(data ?? empty),
   };
+}
+
+function monthsInRange(startDate: string, endDate: string): ExpenditurePeriod[] {
+  const [startYear, startMonth] = startDate.split("-").map(Number);
+  const [endYear, endMonth] = endDate.split("-").map(Number);
+  const months: ExpenditurePeriod[] = [];
+  const cursor = new Date(startYear, startMonth - 1, 1);
+  const end = new Date(endYear, endMonth - 1, 1);
+
+  while (cursor <= end) {
+    months.push({ year: cursor.getFullYear(), month: cursor.getMonth() + 1 });
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+  return months;
+}
+
+/** 시작일과 종료일이 다른 달에 걸쳐도 필요한 월 데이터를 모두 조회합니다. */
+export function useExpendituresForRange(
+  startDate: string,
+  endDate: string
+): ExpenditureRangeResult {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [items, setItems] = useState<DisplayTransaction[]>([]);
+
+  const fetchRange = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      let loaded: DisplayTransaction[];
+      if (isApiConfigured()) {
+        const responses = await Promise.all(
+          monthsInRange(startDate, endDate).map(({ year, month }) =>
+            getMonthlyExpenditures(year, month)
+          )
+        );
+        const byId = new Map<string, DisplayTransaction>();
+        responses.forEach((response) => {
+          response.dailyExpenditures.forEach((day) => {
+            day.list.forEach((item) => {
+              const display = toDisplay(item);
+              byId.set(display.id, display);
+            });
+          });
+        });
+        loaded = [...byId.values()];
+      } else {
+        loaded = TRANSACTIONS.map(mockToDisplay);
+      }
+
+      setItems(
+        loaded
+          .filter((item) => {
+            const date = item.datetime.slice(0, 10);
+            return date >= startDate && date <= endDate;
+          })
+          .sort((a, b) => b.datetime.localeCompare(a.datetime))
+      );
+    } catch (e) {
+      setError((e as Error)?.message ?? "데이터를 불러오지 못했어요.");
+      setItems([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [startDate, endDate]);
+
+  useEffect(() => {
+    void fetchRange();
+  }, [fetchRange]);
+
+  return { loading, error, items, refetch: fetchRange };
 }
 
 export function formatDateLabelReal(iso: string): string {

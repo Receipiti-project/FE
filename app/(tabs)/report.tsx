@@ -16,18 +16,54 @@ import {
   formatKRW,
   getCategory,
 } from "@/constants/mockData";
-import { useExpenditures } from "@/hooks/useExpenditures";
+import { useExpendituresForRange } from "@/hooks/useExpenditures";
 import { answerReportQuestion } from "@/services/reportAssistant";
 
-const RANGES = ["이번주", "이번달"] as const;
-type Range = (typeof RANGES)[number];
+function dateKey(d: Date): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
 
-function currentWeekStart(): string {
-  const d = new Date();
-  const day = d.getDay(); 
-  const diff = day === 0 ? 6 : day - 1; 
-  d.setDate(d.getDate() - diff);
-  return d.toISOString().slice(0, 10);
+function datesBetween(startDate: string, endDate: string): string[] {
+  const dates: string[] = [];
+  const cursor = new Date(`${startDate}T00:00:00`);
+  const end = new Date(`${endDate}T00:00:00`);
+  while (cursor <= end) {
+    dates.push(dateKey(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return dates;
+}
+
+function shortDateLabel(value: string): string {
+  const [, month, day] = value.split("-").map(Number);
+  return `${month}/${day}`;
+}
+
+function monthKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function monthLabel(date: Date): string {
+  return `${date.getFullYear()}년 ${date.getMonth() + 1}월`;
+}
+
+function moveMonth(date: Date, amount: number): Date {
+  return new Date(date.getFullYear(), date.getMonth() + amount, 1);
+}
+
+function monthDateRange(selectedMonth: Date, currentMonth: Date): {
+  startDate: string;
+  endDate: string;
+} {
+  const start = new Date(selectedMonth.getFullYear(), selectedMonth.getMonth(), 1);
+  const isCurrent = monthKey(selectedMonth) === monthKey(currentMonth);
+  const end = isCurrent
+    ? new Date()
+    : new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() + 1, 0);
+  return { startDate: dateKey(start), endDate: dateKey(end) };
 }
 
 function formatTrendAmount(amount: number): string {
@@ -43,65 +79,65 @@ function formatTrendAmount(amount: number): string {
 }
 
 export default function ReportScreen() {
-  const [range, setRange] = useState<Range>("이번달");
+  const currentMonth = useMemo(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  }, []);
+  const [selectedMonth, setSelectedMonth] = useState(currentMonth);
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState<string | null>(null);
+  const { startDate, endDate } = useMemo(
+    () => monthDateRange(selectedMonth, currentMonth),
+    [selectedMonth, currentMonth]
+  );
+  const today = dateKey(new Date());
+  const isCurrentMonth = monthKey(selectedMonth) === monthKey(currentMonth);
 
-  const {
-    loading,
-    totalAmount,
-    txCount,
-    dailyAvg,
-    allItems,
-    weeklySpending,
-    byCategoryReport,
-    topStores,
-    timeOfDayPattern,
-    dayOfWeekPattern,
-    refetch,
-  } = useExpenditures();
+  const { loading, error, items: filteredItems, refetch } =
+    useExpendituresForRange(startDate, endDate);
 
-  // 기간 필터 적용
-  const weekStart = useMemo(() => currentWeekStart(), []);
-
-  const filteredItems = useMemo(() => {
-    if (range === "이번주") {
-      return allItems.filter((t) => t.datetime.slice(0, 10) >= weekStart);
-    }
-    return allItems;
-  }, [range, allItems, weekStart]);
+  const selectedDates = useMemo(
+    () => datesBetween(startDate, endDate),
+    [startDate, endDate]
+  );
 
   const filteredTotal = useMemo(
     () => filteredItems.reduce((s, t) => s + t.amount, 0),
     [filteredItems]
   );
   const filteredCount = filteredItems.length;
-  const filteredAvg = filteredCount > 0 ? Math.round(filteredTotal / 7) : 0;
+  const displayTotal = filteredTotal;
+  const displayCount = filteredCount;
+  const displayAvg = selectedDates.length > 0
+    ? Math.round(filteredTotal / selectedDates.length)
+    : 0;
 
-  // 기간 필터 적용 차트 데이터
-  const displayTotal = range === "이번달" ? totalAmount : filteredTotal;
-  const displayCount = range === "이번달" ? txCount : filteredCount;
-  const displayAvg = range === "이번달" ? dailyAvg : filteredAvg;
-
-  const chartWeekly = useMemo(() => {
-    if (range === "이번달") return weeklySpending;
-    return weeklySpending.filter((d) => d.date >= weekStart);
-  }, [range, weeklySpending, weekStart]);
+  const chartDaily = useMemo(() => {
+    const totals = new Map<string, number>();
+    filteredItems.forEach((item) => {
+      const date = item.datetime.slice(0, 10);
+      totals.set(date, (totals.get(date) ?? 0) + item.amount);
+    });
+    return selectedDates.map((date) => ({
+      date,
+      label: date === today ? "오늘" : shortDateLabel(date),
+      total: totals.get(date) ?? 0,
+    }));
+  }, [filteredItems, selectedDates, today]);
 
   const chartCategory = useMemo(() => {
-    if (range === "이번달") return byCategoryReport;
-    const map = new Map<string, number>();
+    const map = new Map<string, { name: string; total: number }>();
     filteredItems.forEach((t) => {
-      map.set(t.category, (map.get(t.category) ?? 0) + t.amount);
+      const current = map.get(t.category) ?? { name: t.categoryName, total: 0 };
+      current.total += t.amount;
+      map.set(t.category, current);
     });
-    return byCategoryReport
-      .map((c) => ({ ...c, total: map.get(c.id) ?? 0 }))
-      .filter((c) => c.total > 0)
+    return [...map.entries()]
+      .map(([id, value]) => ({ id, ...value }))
       .sort((a, b) => b.total - a.total);
-  }, [range, byCategoryReport, filteredItems]);
+  }, [filteredItems]);
 
   const chartStores = useMemo(() => {
-    if (range === "이번달") return topStores;
     const map = new Map<string, { count: number; total: number }>();
     filteredItems.forEach((t) => {
       const cur = map.get(t.store) ?? { count: 0, total: 0 };
@@ -111,21 +147,55 @@ export default function ReportScreen() {
       .map(([store, v]) => ({ store, ...v }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 3);
-  }, [range, topStores, filteredItems]);
+  }, [filteredItems]);
 
-  const maxWeek = Math.max(...chartWeekly.map((d) => d.total), 1);
+  const tod = useMemo(() => {
+    const buckets = [
+      { id: "morning", label: "아침", range: "06–11시", icon: "sunny-outline" as const, hours: [6, 7, 8, 9, 10] },
+      { id: "lunch", label: "점심", range: "11–14시", icon: "restaurant-outline" as const, hours: [11, 12, 13] },
+      { id: "afternoon", label: "오후", range: "14–18시", icon: "partly-sunny-outline" as const, hours: [14, 15, 16, 17] },
+      { id: "evening", label: "저녁", range: "18–22시", icon: "moon-outline" as const, hours: [18, 19, 20, 21] },
+      { id: "night", label: "야간", range: "22–06시", icon: "bed-outline" as const, hours: [22, 23, 0, 1, 2, 3, 4, 5] },
+    ];
+    return buckets.map((bucket) => ({
+      ...bucket,
+      total: filteredItems
+        .filter((item) => bucket.hours.includes(new Date(item.datetime).getHours()))
+        .reduce((sum, item) => sum + item.amount, 0),
+    }));
+  }, [filteredItems]);
+
+  const dow = useMemo(() => {
+    const labels = ["일", "월", "화", "수", "목", "금", "토"];
+    const totals = new Array(7).fill(0) as number[];
+    filteredItems.forEach((item) => {
+      totals[new Date(item.datetime).getDay()] += item.amount;
+    });
+    return labels.map((label, index) => ({
+      label,
+      total: totals[index],
+      isWeekend: index === 0 || index === 6,
+    }));
+  }, [filteredItems]);
+
+  const maxWeek = Math.max(...chartDaily.map((d) => d.total), 1);
   const maxCat = Math.max(...chartCategory.map((c) => c.total), 1);
-  const tod = range === "이번달" ? timeOfDayPattern : timeOfDayPattern; // 동일 (월간)
   const maxTod = Math.max(...tod.map((t) => t.total), 1);
-  const dow = range === "이번달" ? dayOfWeekPattern : dayOfWeekPattern;
   const maxDow = Math.max(...dow.map((d) => d.total), 1);
   const peakTod = tod.reduce((a, b) => (a.total > b.total ? a : b));
+
+  const rangeLabel = monthLabel(selectedMonth);
+
+  const selectMonth = (amount: number) => {
+    setSelectedMonth((previous) => moveMonth(previous, amount));
+    setAnswer(null);
+  };
 
   const askQuestion = (nextQuestion = question) => {
     const trimmed = nextQuestion.trim();
     if (!trimmed) return;
     setQuestion(trimmed);
-    setAnswer(answerReportQuestion(trimmed, filteredItems, range));
+    setAnswer(answerReportQuestion(trimmed, filteredItems, rangeLabel));
   };
 
   return (
@@ -161,34 +231,56 @@ export default function ReportScreen() {
         </TouchableOpacity>
 
         <View style={styles.statisticsHeader}>
-          <Text style={styles.statisticsTitle}>기간별 소비 통계</Text>
-          <Text style={styles.statisticsDescription}>조회할 기간을 선택하세요</Text>
+          <Text style={styles.statisticsTitle}>월별 소비 통계</Text>
+          <Text style={styles.statisticsDescription}>조회할 월을 선택하세요</Text>
         </View>
 
-        {/* 통계 기간 선택 */}
-        <View style={styles.rangeRow}>
-          {RANGES.map((r) => {
-            const active = r === range;
-            return (
-              <TouchableOpacity
-                key={r}
-                onPress={() => {
-                  setRange(r);
-                  setAnswer(null);
-                }}
-                style={[styles.rangeChip, active && styles.rangeChipActive]}
-              >
-                <Text style={[styles.rangeChipText, active && styles.rangeChipTextActive]}>
-                  {r}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
+        {/* 조회 월 선택 */}
+        <View style={styles.monthCard}>
+          <Text style={styles.monthHint}>조회할 월을 선택하세요</Text>
+          <View style={styles.monthSelector}>
+            <TouchableOpacity
+              accessibilityLabel="이전 달"
+              hitSlop={10}
+              onPress={() => selectMonth(-1)}
+              style={styles.monthButton}
+            >
+              <Ionicons name="chevron-back" size={21} color="#374151" />
+            </TouchableOpacity>
+            <View style={styles.monthLabelGroup}>
+              <Text style={styles.monthTitle}>{rangeLabel}</Text>
+              {isCurrentMonth && (
+                <View style={styles.currentMonthBadge}>
+                  <Text style={styles.currentMonthBadgeText}>이번 달</Text>
+                </View>
+              )}
+            </View>
+            <TouchableOpacity
+              accessibilityLabel="다음 달"
+              hitSlop={10}
+              disabled={isCurrentMonth}
+              onPress={() => selectMonth(1)}
+              style={[styles.monthButton, isCurrentMonth && styles.monthButtonDisabled]}
+            >
+              <Ionicons
+                name="chevron-forward"
+                size={21}
+                color={isCurrentMonth ? "#D1D5DB" : "#374151"}
+              />
+            </TouchableOpacity>
+          </View>
         </View>
+
+        {!!error && (
+          <View style={styles.errorBox}>
+            <Ionicons name="alert-circle-outline" size={15} color="#B91C1C" />
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
+        )}
 
         {/* 총 지출 카드 */}
         <View style={styles.totalCard}>
-          <Text style={styles.totalLabel}>{range} 총 지출</Text>
+          <Text style={styles.totalLabel}>{rangeLabel} 총 지출</Text>
           {loading ? (
             <ActivityIndicator color="#111827" style={{ marginTop: 10 }} />
           ) : (
@@ -216,12 +308,17 @@ export default function ReportScreen() {
                 <ActivityIndicator color="#3B82F6" />
               </View>
             ) : (
-              <View style={styles.barRow}>
-                {chartWeekly.map((d) => {
+              <ScrollView
+                horizontal
+                nestedScrollEnabled
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.dailyBarRow}
+              >
+                {chartDaily.map((d) => {
                   const ratio = d.total / maxWeek;
                   const isToday = d.label === "오늘";
                   return (
-                    <View key={d.date} style={styles.barCol}>
+                    <View key={d.date} style={styles.dailyBarCol}>
                       <Text
                         style={styles.barValue}
                         numberOfLines={1}
@@ -248,7 +345,7 @@ export default function ReportScreen() {
                     </View>
                   );
                 })}
-              </View>
+              </ScrollView>
             )}
           </View>
         </View>
@@ -439,7 +536,7 @@ export default function ReportScreen() {
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.storeName} numberOfLines={1}>{s.store}</Text>
-                    <Text style={styles.storeMeta}>{range} {s.count}회 방문</Text>
+                    <Text style={styles.storeMeta}>{rangeLabel} · {s.count}회 결제</Text>
                   </View>
                   <Text style={styles.storeAmount}>{formatKRW(s.total)}</Text>
                 </View>
@@ -447,9 +544,9 @@ export default function ReportScreen() {
             </View>
           )}
         </View>
-
         <View style={{ height: 24 }} />
       </ScrollView>
+
     </SafeAreaView>
   );
 }
@@ -469,11 +566,17 @@ const styles = StyleSheet.create({
   statisticsHeader: { marginTop: 26, marginBottom: 10 },
   statisticsTitle: { color: "#111827", fontSize: 16, fontWeight: "800" },
   statisticsDescription: { color: "#9CA3AF", fontSize: 11, marginTop: 3 },
-  rangeRow: { flexDirection: "row", backgroundColor: "#F3F4F6", borderRadius: 12, padding: 4, marginBottom: 16 },
-  rangeChip: { flex: 1, paddingVertical: 8, borderRadius: 8, alignItems: "center" },
-  rangeChipActive: { backgroundColor: "#FFFFFF" },
-  rangeChipText: { fontSize: 13, color: "#6B7280", fontWeight: "600" },
-  rangeChipTextActive: { color: "#111827", fontWeight: "700" },
+  monthCard: { marginBottom: 16, padding: 14, borderRadius: 16, backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "#E5E7EB" },
+  monthHint: { color: "#9CA3AF", fontSize: 10, fontWeight: "600", textAlign: "center", marginBottom: 9 },
+  monthSelector: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  monthButton: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: "#F3F4F6" },
+  monthButtonDisabled: { opacity: 0.55 },
+  monthLabelGroup: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7 },
+  monthTitle: { color: "#111827", fontSize: 17, fontWeight: "800" },
+  currentMonthBadge: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 999, backgroundColor: "#DBEAFE" },
+  currentMonthBadgeText: { color: "#2563EB", fontSize: 9, fontWeight: "800" },
+  errorBox: { flexDirection: "row", alignItems: "center", gap: 7, padding: 11, marginBottom: 12, borderRadius: 12, backgroundColor: "#FEF2F2", borderWidth: 1, borderColor: "#FECACA" },
+  errorText: { flex: 1, color: "#B91C1C", fontSize: 11, lineHeight: 16 },
   totalCard: { backgroundColor: "#FFFFFF", borderRadius: 20, padding: 20, borderWidth: 1, borderColor: "#F3F4F6" },
   totalLabel: { color: "#6B7280", fontSize: 13, fontWeight: "600" },
   totalAmount: { color: "#111827", fontSize: 28, fontWeight: "800", marginTop: 4 },
@@ -485,6 +588,8 @@ const styles = StyleSheet.create({
   section: { marginTop: 24 },
   sectionTitle: { fontSize: 15, fontWeight: "700", color: "#111827", marginBottom: 12 },
   trendCard: { backgroundColor: "#FFFFFF", borderRadius: 16, padding: 16, borderWidth: 1, borderColor: "#F3F4F6" },
+  dailyBarRow: { flexDirection: "row", height: 160, alignItems: "flex-end", gap: 8, paddingRight: 4 },
+  dailyBarCol: { width: 48, height: 160, alignItems: "center" },
   barRow: { flexDirection: "row", alignItems: "flex-end", height: 160, gap: 8 },
   barCol: { flex: 1, alignItems: "center" },
   barValue: { fontSize: 10, color: "#6B7280", marginBottom: 4, height: 14 },
