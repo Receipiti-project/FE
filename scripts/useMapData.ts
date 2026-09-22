@@ -11,12 +11,7 @@ import { ActivityZone, buildActivityZones } from "./activityZones";
 import { resolveLocation } from "./locationPipeline";
 import { hasNoLocation } from "./noLocationExpenses";
 import { classifyNonPlace } from "./onlineMerchant";
-import {
-  haversineKm,
-  hourOf,
-  LatLng,
-  routeDistanceKm,
-} from "./mapGeo";
+import { hourOf, LatLng, routeDistanceKm } from "./mapGeo";
 
 export type MapPin = {
   id: string;
@@ -56,6 +51,7 @@ export type MapData = {
   heatmapPoints: HeatPoint[];
   stores: TopStore[];
   unmapped: UnmappedExpense[];
+  spentDates: string[];
   summary: MapSummary;
   loading: boolean;
   reload: () => void;
@@ -172,6 +168,7 @@ export function useMapData(
   const [fullRoute, setFullRoute] = useState<MapPin[]>([]);
   const [stores, setStores] = useState<TopStore[]>([]);
   const [unmapped, setUnmapped] = useState<UnmappedExpense[]>([]);
+  const [spentDates, setSpentDates] = useState<string[]>([]);
   const [routeMeters, setRouteMeters] = useState<number | null>(null);
   const [routeTotal, setRouteTotal] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -206,6 +203,7 @@ export function useMapData(
         ? list.dailyExpenditures.flatMap((d) => d.list)
         : [];
       if (alive) {
+        setSpentDates(list ? list.dailyExpenditures.map((d) => d.date) : []);
         setStores(
           toTopStores(
             items.filter(
@@ -327,6 +325,7 @@ export function useMapData(
     heatmapPoints,
     stores,
     unmapped,
+    spentDates,
     summary,
     loading,
     reload,

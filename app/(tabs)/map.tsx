@@ -15,7 +15,10 @@ import { stripBranchName } from "@/scripts/locationPipeline";
 import { LatLng } from "@/scripts/mapGeo";
 import { markNoLocation } from "@/scripts/noLocationExpenses";
 import { Place } from "@/scripts/placeSearch";
-import { updateExpenditure } from "@/services/api/expenditureApi";
+import {
+  getMonthlyExpenditures,
+  updateExpenditure,
+} from "@/services/api/expenditureApi";
 import {
   localDate,
   MapPin,
@@ -27,7 +30,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { Calendar } from "react-native-calendars";
 import { useFocusEffect } from "expo-router";
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -59,10 +62,42 @@ export default function MapScreen() {
     heatmapPoints,
     stores,
     unmapped,
+    spentDates,
     summary,
     loading,
     reload,
   } = useMapData(mode, timeRange, dateKey);
+
+  const [monthDots, setMonthDots] = useState<Record<string, string[]>>({});
+
+  const loadMonthDots = useCallback(
+    async (year: number, month: number) => {
+      const key = `${year}-${String(month).padStart(2, "0")}`;
+      if (monthDots[key]) return;
+      try {
+        const list = await getMonthlyExpenditures(year, month);
+        const dates = list.dailyExpenditures.map((d) => d.date);
+        setMonthDots((prev) => ({ ...prev, [key]: dates }));
+      } catch (e) {
+        console.warn("[map] 달력 소비 날짜 조회 실패", e);
+      }
+    },
+    [monthDots]
+  );
+
+  const markedDates = useMemo(() => {
+    const marks: Record<string, any> = {};
+    const dates = [...spentDates, ...Object.values(monthDots).flat()];
+    dates.forEach((date) => {
+      marks[date] = { marked: true, dotColor: "#3B82F6" };
+    });
+    marks[dateKey] = {
+      ...(marks[dateKey] ?? {}),
+      selected: true,
+      selectedColor: "#3B82F6",
+    };
+    return marks;
+  }, [spentDates, monthDots, dateKey]);
 
   const focusedOnce = useRef(false);
   useFocusEffect(
@@ -299,7 +334,10 @@ export default function MapScreen() {
             <Calendar
               current={dateKey}
               maxDate={localDate(new Date())}
-              markedDates={{ [dateKey]: { selected: true } }}
+              markedDates={markedDates}
+              onMonthChange={(m: { year: number; month: number }) =>
+                loadMonthDots(m.year, m.month)
+              }
               onDayPress={(d: { dateString: string }) => {
                 setDateKey(d.dateString);
                 setSelected(null);
