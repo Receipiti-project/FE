@@ -31,7 +31,6 @@ export type CapturePayment = {
   paidAtIso?: string;
   method?: PaymentMethod;
   confidence?: number;
-  currency?: string;
   address?: string;
 };
 
@@ -77,30 +76,28 @@ function captureDate(value?: string): { paidAt?: string; paidAtIso?: string } {
   const raw = value?.trim();
   if (!raw) return {};
 
-  const normalized = raw.replace(
+  const shortDateTime = raw.match(
+    /^(\d{1,2})[./-](\d{1,2})\s+(\d{1,2}):(\d{2})$/
+  );
+  const withYear = shortDateTime
+    ? `${new Date().getFullYear()}-${shortDateTime[1].padStart(2, "0")}-${shortDateTime[2].padStart(2, "0")}T${shortDateTime[3].padStart(2, "0")}:${shortDateTime[4]}:00`
+    : raw;
+  const normalized = withYear.replace(
     /^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})/,
     "$1T$2"
   );
   const parsed = new Date(normalized);
   if (Number.isNaN(parsed.getTime())) return { paidAt: raw };
 
+  const hour = parsed.getHours();
+  const period = hour < 12 ? "오전" : "오후";
+  const displayHour = hour % 12 || 12;
+  const minute = String(parsed.getMinutes()).padStart(2, "0");
+
   return {
-    paidAt: parsed.toLocaleString("ko-KR", {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-    }),
+    paidAt: `${parsed.getMonth() + 1}월 ${parsed.getDate()}일 ${period} ${displayHour}시 ${minute}분`,
     paidAtIso: normalized,
   };
-}
-
-function captureCurrency(value?: string): string {
-  const normalized = value?.trim().toUpperCase();
-  return normalized && ["KRW", "USD", "EUR", "JPY"].includes(normalized)
-    ? normalized
-    : "KRW";
 }
 
 export async function parseCapture(uri: string): Promise<CaptureOcrResult> {
@@ -139,7 +136,6 @@ export async function parseCapture(uri: string): Promise<CaptureOcrResult> {
       ...date,
       method: "카드",
       confidence: analysis.confidence ?? 0,
-      currency: captureCurrency(analysis.currency),
     }],
   };
 }
@@ -191,8 +187,11 @@ type CaptureSavePayload = {
   paidAtIso?: string;
   categoryId?: number;
   defaultCategoryId?: number;
-  currency?: string;
   memo?: string;
+  placeId?: string;
+  address?: string;
+  latitude?: number;
+  longitude?: number;
   [key: string]: unknown;
 };
 
@@ -282,7 +281,11 @@ export async function saveTransactions(
             amount: d.amount ?? 0,
             expenditureDate,
             memo: d.memo ?? "",
-            currency: d.currency ?? "KRW",
+            currency: "KRW",
+            placeId: d.placeId,
+            address: d.address,
+            latitude: d.latitude,
+            longitude: d.longitude,
           },
           inputTypeForSource(source)
         );
