@@ -1,11 +1,10 @@
-import { CategoryType, Currency, InputType } from './types';
+import { CategoryType, InputType } from './types';
 import { hasAllRequired } from './smsLexer';
 
 const OPENAI_API_KEY = process.env.EXPO_PUBLIC_OPENAI_API_KEY ?? '';
 
 
 const CATEGORIES: CategoryType[] = ['FOOD', 'TRANSPORT', 'SHOPPING', 'CULTURE', 'HEALTH', 'ETC'];
-const CURRENCIES: Currency[] = ['KRW', 'USD', 'EUR', 'JPY'];
 
 export interface ParsedVoiceExpense {
   amount: number | null;
@@ -14,7 +13,6 @@ export interface ParsedVoiceExpense {
   category: CategoryType | null;
   memo: string | null;
   inputType: InputType;
-  currency: Currency | null;
   transcript: string;
 }
 
@@ -96,18 +94,13 @@ async function parseExpense(text: string): Promise<any> {
   · 병원/약국 → HEALTH
   · 애매하면 → ETC
 - memo: 한 줄 요약. 없으면 null.
-- currency: KRW/USD/EUR/JPY 중 하나.
-  · "달러" → USD, "유로" → EUR, "엔" → JPY
-  · 명시적 통화 언급 없으면 null
-
 형식:
 {
   "amount": number | null,
   "storeName": string | null,
   "paymentDate": string | null,
   "category": "FOOD" | "TRANSPORT" | "SHOPPING" | "CULTURE" | "HEALTH" | "ETC" | null,
-  "memo": string | null,
-  "currency": "KRW" | "USD" | "EUR" | "JPY" | null
+  "memo": string | null
 }
 
 입력: ${text}`;
@@ -162,15 +155,12 @@ function sanitize(p: any, transcript: string): ParsedVoiceExpense {
       ? p.memo.trim()
       : null;
 
-  const currency = CURRENCIES.includes(p?.currency) ? (p.currency as Currency) : null;
-
   return {
     amount,
     storeName,
     paymentDate,
     category,
     memo,
-    currency,
     inputType: 'VOICE',
     transcript,
   };

@@ -27,7 +27,6 @@ export type CardNotificationAnalysisResponse = {
   storeName?: string;
   amount?: number;
   paymentDateTime?: string;
-  currency?: string;
   approvalStatus?: string;
   confidence?: number;
 };
@@ -288,8 +287,8 @@ export async function createExpenditure(
   const headers = buildAuthHeaders({ "Content-Type": "application/json" });
 
   const body: CreateExpenditureDto = {
-    currency: "KRW",
     ...dto,
+    currency: "KRW",
   };
 
   const res = await fetch(url, {
@@ -356,7 +355,7 @@ export async function updateExpenditure(
   const res = await fetch(url, {
     method: "PATCH",
     headers,
-    body: JSON.stringify(dto),
+    body: JSON.stringify({ ...dto, currency: "KRW" }),
   });
 
   if (!res.ok) {

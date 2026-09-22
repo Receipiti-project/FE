@@ -21,7 +21,6 @@ export type DisplayTransaction = {
   datetime: string;
   method: string;
   memo?: string;
-  currency: string;
 };
 
 export type DailySpending = {
@@ -98,7 +97,6 @@ function toDisplay(item: ExpenditureListItem): DisplayTransaction {
     datetime: item.expenditureDate,
     method: "카드",
     memo: item.memo,
-    currency: item.currency ?? "KRW",
   };
 }
 
@@ -113,7 +111,6 @@ function mockToDisplay(t: (typeof TRANSACTIONS)[number]): DisplayTransaction {
     datetime: t.datetime,
     method: t.method,
     memo: t.memo,
-    currency: "KRW",
   };
 }
 

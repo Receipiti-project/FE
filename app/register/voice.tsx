@@ -7,8 +7,8 @@ import {
 } from 'expo-audio';
 import {
   CATEGORIES,
-  formatCurrency,
   formatCurrencyAmount,
+  formatKRW,
 } from '../../constants/mockData';
 import { processVoice } from '../../scripts/voicePipeline';
 import {
@@ -37,23 +37,12 @@ import { router } from 'expo-router';
 
 const HITSLOP = { top: 12, bottom: 12, left: 12, right: 12 } as const;
 const ACCENT = '#EF4444';
-const CURRENCY_OPTIONS = ['KRW', 'USD', 'EUR', 'JPY'] as const;
-type Currency = (typeof CURRENCY_OPTIONS)[number];
-
-function normalizeCurrency(value?: string | null): Currency {
-  const normalized = value?.toUpperCase();
-  return CURRENCY_OPTIONS.includes(normalized as Currency)
-    ? (normalized as Currency)
-    : 'KRW';
-}
-
 type VoiceData = {
   amount: number | null;
   storeName: string | null;
   paymentDate: string | null;
   category: string | null;
   memo: string | null;
-  currency: Currency;
 };
 
 export default function VoiceScreen() {
@@ -112,9 +101,11 @@ export default function VoiceScreen() {
         setPlace(found);
         setBaseName(pipe.data.storeName);
         setVoiceData({
-          ...(pipe.data as VoiceData),
+          amount: pipe.data.amount,
           storeName: found?.placeName ?? pipe.data.storeName,
-          currency: normalizeCurrency(pipe.data.currency),
+          paymentDate: pipe.data.paymentDate,
+          category: pipe.data.category,
+          memo: pipe.data.memo,
         });
         await audioRecorder.prepareToRecordAsync();
       } catch (e: any) {
@@ -263,45 +254,27 @@ export default function VoiceScreen() {
             <Text style={styles.cardLabel}>인식 결과</Text>
             <View style={styles.fieldBlock}>
               <Text style={styles.fieldLabel}>결제금액</Text>
-              <TextInput
-                style={styles.input}
-                value={
-                  voiceData.amount != null
-                    ? formatCurrencyAmount(voiceData.amount, voiceData.currency)
-                    : ''
-                }
-                onChangeText={(value) => {
-                  const digits = value.replace(/[^0-9]/g, '');
-                  updateVoiceData({ amount: digits ? Number(digits) : null });
-                }}
-                placeholder="0"
-                placeholderTextColor="#9CA3AF"
-                keyboardType="number-pad"
-              />
-              <View style={styles.currencyRow}>
-                {CURRENCY_OPTIONS.map((currency) => {
-                  const active = voiceData.currency === currency;
-                  return (
-                    <TouchableOpacity
-                      key={currency}
-                      onPress={() => updateVoiceData({ currency })}
-                      style={[styles.currencyChip, active && styles.currencyChipActive]}
-                    >
-                      <Text
-                        style={[
-                          styles.currencyText,
-                          active && styles.currencyTextActive,
-                        ]}
-                      >
-                        {currency}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
+              <View style={styles.amountInputShell}>
+                <TextInput
+                  style={styles.amountInput}
+                  value={
+                    voiceData.amount != null && voiceData.amount > 0
+                      ? formatCurrencyAmount(voiceData.amount)
+                      : ''
+                  }
+                  onChangeText={(value) => {
+                    const digits = value.replace(/[^0-9]/g, '');
+                    updateVoiceData({ amount: digits ? Number(digits) : null });
+                  }}
+                  placeholder="0"
+                  placeholderTextColor="#9CA3AF"
+                  keyboardType="number-pad"
+                />
+                <Text style={styles.amountUnit}>원</Text>
               </View>
               {voiceData.amount != null && voiceData.amount > 0 && (
                 <Text style={styles.amountPreview}>
-                  {formatCurrency(voiceData.amount, voiceData.currency)}
+                  {formatKRW(voiceData.amount)}
                 </Text>
               )}
             </View>
@@ -550,26 +523,23 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   fieldBlock: { marginBottom: 12 },
-  currencyRow: {
+  amountInputShell: {
     flexDirection: 'row',
-    gap: 6,
-    flexWrap: 'wrap',
-    marginTop: 8,
-  },
-  currencyChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
     borderWidth: 1,
-    borderColor: 'transparent',
+    borderColor: '#E5E7EB',
+    borderRadius: 10,
+    paddingRight: 12,
   },
-  currencyChipActive: {
-    backgroundColor: '#EFF6FF',
-    borderColor: '#3B82F6',
+  amountInput: {
+    flex: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: '#111827',
   },
-  currencyText: { color: '#6B7280', fontSize: 12, fontWeight: '600' },
-  currencyTextActive: { color: '#3B82F6', fontWeight: '700' },
+  amountUnit: { color: '#111827', fontSize: 14, fontWeight: '700' },
   amountPreview: {
     textAlign: 'right',
     color: '#3B82F6',
