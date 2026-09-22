@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   StyleSheet,
@@ -9,6 +9,12 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { formatKRW } from "@/constants/mockData";
 import { createReport, ReportResponse } from "@/services/api/reportApi";
+import { getMonthlyExpenditures } from "@/services/api/expenditureApi";
+import {
+  expenditureSignature,
+  getCachedMonthlyReport,
+  setCachedMonthlyReport,
+} from "@/services/monthlyReportCache";
 
 function monthKey(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
@@ -64,13 +70,64 @@ export function MonthlyAiReport({ showTitle = true }: { showTitle?: boolean }) {
   const [selectedMonth, setSelectedMonth] = useState(currentMonth);
   const [report, setReport] = useState<ReportResponse | null>(null);
   const [loading, setLoading] = useState(false);
+  const [checkingData, setCheckingData] = useState(true);
+  const [currentSignature, setCurrentSignature] = useState<string | null>(null);
+  const [cachedSignature, setCachedSignature] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const isCurrentMonth = monthKey(selectedMonth) === monthKey(currentMonth);
+  const selectedMonthKey = monthKey(selectedMonth);
+  const needsRefresh =
+    report != null &&
+    currentSignature != null &&
+    cachedSignature != null &&
+    currentSignature !== cachedSignature;
+  const analysisComplete = report != null && !needsRefresh;
+
+  const fetchSignature = useCallback(async () => {
+    const data = await getMonthlyExpenditures(
+      selectedMonth.getFullYear(),
+      selectedMonth.getMonth() + 1
+    );
+    return expenditureSignature(data);
+  }, [selectedMonth]);
+
+  useEffect(() => {
+    let active = true;
+    const cached = getCachedMonthlyReport(selectedMonthKey);
+
+    setReport(cached?.report ?? null);
+    setCachedSignature(cached?.expenditureSignature ?? null);
+    setCurrentSignature(null);
+    setCheckingData(true);
+    setError(null);
+
+    fetchSignature()
+      .then((signature) => {
+        if (active) setCurrentSignature(signature);
+      })
+      .catch((requestError) => {
+        if (active && !cached) {
+          setError(
+            (requestError as Error)?.message ??
+              "지출 데이터 상태를 확인하지 못했어요."
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setCheckingData(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [fetchSignature, selectedMonthKey]);
 
   const selectMonth = (amount: number) => {
     setSelectedMonth((previous) => moveMonth(previous, amount));
     setReport(null);
+    setCachedSignature(null);
+    setCurrentSignature(null);
     setError(null);
   };
 
@@ -78,9 +135,17 @@ export function MonthlyAiReport({ showTitle = true }: { showTitle?: boolean }) {
     setLoading(true);
     setError(null);
     try {
-      setReport(await createReport(monthKey(selectedMonth)));
+      const nextReport = await createReport(selectedMonthKey);
+      const signature = await fetchSignature();
+      setCachedMonthlyReport(selectedMonthKey, {
+        report: nextReport,
+        expenditureSignature: signature,
+        generatedAt: new Date().toISOString(),
+      });
+      setReport(nextReport);
+      setCachedSignature(signature);
+      setCurrentSignature(signature);
     } catch (requestError) {
-      setReport(null);
       setError((requestError as Error)?.message ?? "리포트를 생성하지 못했어요.");
     } finally {
       setLoading(false);
@@ -129,20 +194,46 @@ export function MonthlyAiReport({ showTitle = true }: { showTitle?: boolean }) {
           </TouchableOpacity>
         </View>
         <TouchableOpacity
-          disabled={loading}
+          disabled={loading || checkingData || analysisComplete}
           onPress={loadReport}
-          style={[styles.generateButton, loading && styles.generateButtonDisabled]}
+          style={[
+            styles.generateButton,
+            (loading || checkingData || analysisComplete) &&
+              styles.generateButtonDisabled,
+          ]}
         >
           {loading ? (
             <ActivityIndicator size="small" color="#FFFFFF" />
           ) : (
-            <Ionicons name="sparkles" size={16} color="#FFFFFF" />
+            <Ionicons
+              name={analysisComplete ? "checkmark-circle" : "sparkles"}
+              size={16}
+              color="#FFFFFF"
+            />
           )}
           <Text style={styles.generateButtonText}>
-            {loading ? "분석 중..." : report ? "다시 생성하기" : "리포트 보기"}
+            {loading
+              ? "분석 중..."
+              : checkingData
+                ? "데이터 확인 중..."
+                : needsRefresh
+                  ? "다시 분석하기"
+                  : report
+                    ? "분석 완료"
+                    : "리포트 보기"}
           </Text>
         </TouchableOpacity>
       </View>
+
+      {needsRefresh && (
+        <View style={styles.refreshNotice}>
+          <Ionicons name="refresh-circle-outline" size={18} color="#B45309" />
+          <Text style={styles.refreshNoticeText}>
+            분석 이후 지출 내역이 변경됐어요. 기존 결과를 유지하고 있으며,
+            다시 분석하면 최신 내역이 반영됩니다.
+          </Text>
+        </View>
+      )}
 
       {!!error && (
         <View style={styles.errorCard}>
@@ -295,6 +386,16 @@ const styles = StyleSheet.create({
     backgroundColor: "#FEF2F2",
   },
   errorText: { flex: 1, color: "#B91C1C", fontSize: 12, lineHeight: 18 },
+  refreshNotice: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    padding: 13,
+    marginTop: 10,
+    borderRadius: 12,
+    backgroundColor: "#FFFBEB",
+  },
+  refreshNoticeText: { flex: 1, color: "#92400E", fontSize: 12, lineHeight: 18 },
   resultCard: {
     backgroundColor: "#FFFFFF",
     borderRadius: 16,
