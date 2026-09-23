@@ -220,7 +220,7 @@ export default function VoiceScreen() {
         categoryId: null,
       });
       setStep('review');
-      if (storeName) void classifyStore(storeName);
+      if (storeName) void classifyStore(storeName, true);
     } catch (e: any) {
       if (tickRef.current) {
         clearInterval(tickRef.current);
@@ -234,7 +234,7 @@ export default function VoiceScreen() {
     }
   };
 
-  const classifyStore = async (storeName: string) => {
+  const classifyStore = async (storeName: string, parsed = false) => {
     const name = storeName.trim();
     if (!name) return;
 
@@ -248,7 +248,13 @@ export default function VoiceScreen() {
     if (userEditedRef.current) return;
 
     setVoiceData((prev) =>
-      prev ? { ...prev, categoryId: decision.selectedCategoryId } : prev
+      prev
+        ? {
+            ...prev,
+            categoryId: decision.selectedCategoryId,
+            category: parsed ? prev.category : null,
+          }
+        : prev
     );
     setCategoryAutoApplied(decision.selectedCategoryId != null);
   };

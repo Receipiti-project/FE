@@ -80,6 +80,11 @@ type ScanEdit = {
   amount?: number | null;
   category?: string | null;
   categoryId?: number | null;
+  recommendedCategoryId?: number | null;
+  categoryMatchedCount?: number;
+  categoryAutoApplied?: boolean;
+  userSelectedCategory?: boolean;
+  recommendationLoaded?: boolean;
   memo?: string | null;
   place?: ResolvedPlace | null;
   placeLoading?: boolean;
@@ -95,6 +100,11 @@ type ScanItem = {
   body: string;
   draft: Draft;
   baseName: string | null;
+  recommendedCategoryId: number | null;
+  categoryMatchedCount: number;
+  categoryAutoApplied: boolean;
+  userSelectedCategory: boolean;
+  recommendationLoaded: boolean;
   place: ResolvedPlace | null | undefined;
   placeLoading: boolean;
   placeDropped: boolean;
@@ -178,7 +188,7 @@ export default function SmsScreen() {
       });
       setPasteOpen(false);
       setStep('review');
-      if (storeName) void classifyStore(storeName);
+      if (storeName) void classifyStore(storeName, true);
     } catch (e: any) {
       Alert.alert('파싱 실패', e?.message ?? String(e));
     } finally {
@@ -186,7 +196,7 @@ export default function SmsScreen() {
     }
   };
 
-  const classifyStore = async (storeName: string) => {
+  const classifyStore = async (storeName: string, parsed = false) => {
     const name = storeName.trim();
     if (!name) return;
 
@@ -200,7 +210,13 @@ export default function SmsScreen() {
     if (userEditedRef.current) return;
 
     setDraft((prev) =>
-      prev ? { ...prev, categoryId: decision.selectedCategoryId } : prev
+      prev
+        ? {
+            ...prev,
+            categoryId: decision.selectedCategoryId,
+            category: parsed ? prev.category : null,
+          }
+        : prev
     );
     setCategoryAutoApplied(decision.selectedCategoryId != null);
   };
@@ -344,6 +360,11 @@ export default function SmsScreen() {
             draft,
             baseName:
               'baseName' in e ? (e.baseName ?? null) : (base?.storeName ?? null),
+            recommendedCategoryId: e.recommendedCategoryId ?? null,
+            categoryMatchedCount: e.categoryMatchedCount ?? 0,
+            categoryAutoApplied: e.categoryAutoApplied ?? false,
+            userSelectedCategory: e.userSelectedCategory ?? false,
+            recommendationLoaded: e.recommendationLoaded ?? false,
             place: e.place,
             placeLoading: e.placeLoading ?? false,
             placeDropped: e.placeDropped ?? false,
@@ -387,11 +408,33 @@ export default function SmsScreen() {
     return found;
   };
 
+  const lookupScanCategory = async (s: ScanItem) => {
+    const name = s.draft.storeName?.trim();
+    updateScan(s.id, { recommendationLoaded: true });
+    if (!name) return;
+
+    const recommendation = await getCategoryRecommendation(name).catch(() => null);
+    const decision = resolveCategoryRecommendation(recommendation, categories);
+    const autoPick = !s.userSelectedCategory && decision.selectedCategoryId != null;
+
+    updateScan(s.id, {
+      recommendedCategoryId: decision.recommendedCategoryId,
+      categoryMatchedCount: decision.matchedCount,
+      ...(autoPick && {
+        categoryId: decision.selectedCategoryId,
+        categoryAutoApplied: true,
+      }),
+    });
+  };
+
   const toggleScanExpand = (s: ScanItem) => {
     const opening = !s.expanded;
     updateScan(s.id, { expanded: opening });
     if (opening && s.place === undefined && !s.placeLoading) {
       lookupScanPlace(s);
+    }
+    if (opening && !s.recommendationLoaded) {
+      lookupScanCategory(s);
     }
   };
 
@@ -471,7 +514,14 @@ export default function SmsScreen() {
           ? null
           : (s.place ?? (await lookupScanPlace(s)));
         await registerExpense(
-          s.draft,
+          {
+            ...s.draft,
+            categoryId: s.userSelectedCategory ? s.draft.categoryId : null,
+            defaultCategoryId:
+              !s.userSelectedCategory && s.categoryAutoApplied
+                ? s.draft.categoryId
+                : null,
+          },
           s.body,
           place,
           { useCurrentLocation: false, inputType: 'SMS' }
@@ -1172,8 +1222,22 @@ function ScanCard({
             <CategoryPicker
               compact
               selectedId={selectedCategoryId}
-              onSelect={(categoryId) => onChange({ categoryId })}
+              recommendedCategoryId={item.recommendedCategoryId}
+              onSelect={(categoryId) =>
+                onChange({
+                  categoryId,
+                  categoryAutoApplied: false,
+                  userSelectedCategory: true,
+                })
+              }
             />
+            {item.recommendedCategoryId != null && !item.userSelectedCategory && (
+              <Text style={styles.inputHint}>
+                {item.categoryAutoApplied
+                  ? `선택 이력 ${item.categoryMatchedCount}회 · 자동 적용`
+                  : `선택 이력 ${item.categoryMatchedCount}회 · 추천 카테고리를 확인해 주세요.`}
+              </Text>
+            )}
           </View>
           <View style={{ marginTop: 10 }}>
             <Text style={styles.fieldLabel}>메모</Text>
