@@ -32,9 +32,16 @@ function fillPaymentDateFallback(p: ParsedVoiceExpense): ParsedVoiceExpense {
   return { ...p, paymentDate: iso };
 }
 
-export async function processVoice(file: any): Promise<VoicePipelineResult> {
+export type VoiceProcessingStage = 'transcribing' | 'extracting';
+
+export async function processVoice(
+  file: any,
+  onStage?: (stage: VoiceProcessingStage) => void,
+): Promise<VoicePipelineResult> {
   const t0 = Date.now();
+  onStage?.('transcribing');
   const text = await transcribeAudio(file);
+  onStage?.('extracting');
   const raw = await parseExpense(text);
 
   const sanitized = sanitize(raw, text);

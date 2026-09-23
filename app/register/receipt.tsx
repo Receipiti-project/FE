@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -66,9 +66,9 @@ const PAYMENT_METHODS: PaymentMethod[] = [
 ];
 
 const ANALYSIS_STEPS = [
-  { id: "upload", label: "이미지 업로드" },
-  { id: "ocr", label: "OCR 텍스트 추출" },
-  { id: "classify", label: "카테고리 자동 분류" },
+  { id: "prepare", label: "이미지 준비" },
+  { id: "analyze", label: "영수증 분석 요청" },
+  { id: "category", label: "카테고리 추천 조회" },
 ];
 
 export default function ReceiptScreen() {
@@ -77,19 +77,8 @@ export default function ReceiptScreen() {
   const [step, setStep] = useState<Step>("idle");
   const [draft, setDraft] = useState<Draft | null>(null);
   const [analysisStep, setAnalysisStep] = useState(0);
-  const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (tickRef.current) clearInterval(tickRef.current);
-    };
-  }, []);
 
   const reset = () => {
-    if (tickRef.current) {
-      clearInterval(tickRef.current);
-      tickRef.current = null;
-    }
     setImageUri(null);
     setDraft(null);
     setStep("idle");
@@ -125,19 +114,11 @@ export default function ReceiptScreen() {
     setStep("analyzing");
     setAnalysisStep(0);
 
-    // 분석 단계 표시 
-    if (tickRef.current) clearInterval(tickRef.current);
-    tickRef.current = setInterval(() => {
-      setAnalysisStep((p) => Math.min(p + 1, ANALYSIS_STEPS.length - 1));
-    }, 420);
-
     try {
-      const res = await parseReceipt(uri);
-      if (tickRef.current) {
-        clearInterval(tickRef.current);
-        tickRef.current = null;
-      }
-      setAnalysisStep(ANALYSIS_STEPS.length - 1);
+      const res = await parseReceipt(uri, (stage) => {
+        setAnalysisStep(stage === "preparing" ? 0 : 1);
+      });
+      setAnalysisStep(2);
       const recommendation = res.storeName
         ? await getCategoryRecommendation(res.storeName).catch(() => null)
         : null;
@@ -147,8 +128,6 @@ export default function ReceiptScreen() {
       );
       applyOcrResult(res, decision);
     } catch (e) {
-      if (tickRef.current) clearInterval(tickRef.current);
-      tickRef.current = null;
       const msg = (e as Error)?.message ?? "";
       if (msg.startsWith("AUTH_EXPIRED:")) {
         Alert.alert("인증 만료", msg.replace("AUTH_EXPIRED:", ""), [{ text: "확인", onPress: reset }]);
@@ -380,36 +359,7 @@ export default function ReceiptScreen() {
 
           {/* 카테고리 */}
           <View style={styles.card}>
-            <View style={styles.cardLabelRow}>
-              <Text style={styles.cardLabel}>카테고리</Text>
-              {draft && (
-                <View
-                  style={[
-                    styles.confPill,
-                    {
-                      backgroundColor:
-                        draft.categoryConfidence >= 0.9
-                          ? "#ECFDF5"
-                          : "#FFF7ED",
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.confPillText,
-                      {
-                        color:
-                          draft.categoryConfidence >= 0.9
-                            ? "#059669"
-                            : "#D97706",
-                      },
-                    ]}
-                  >
-                    AI 신뢰도 {Math.round(draft.categoryConfidence * 100)}%
-                  </Text>
-                </View>
-              )}
-            </View>
+            <Text style={styles.cardLabel}>카테고리</Text>
             <CategoryPicker
               selectedId={draft?.categoryId ?? null}
               recommendedCategoryId={draft?.initialCategoryId}
@@ -530,7 +480,7 @@ function EmptyState({
           영수증을 찍으면 자동으로 입력해드려요
         </Text>
         <Text style={styles.emptySub}>
-          가맹점, 결제일시, 품목, 총 금액까지 OCR로 추출하고 카테고리도 AI가
+          가맹점, 결제일시, 총 금액을 OCR로 추출하고 카테고리도 AI가
           자동 분류합니다.
         </Text>
         <View style={styles.featureRow}>

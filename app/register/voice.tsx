@@ -48,9 +48,9 @@ const ACCENT = '#EF4444';
 const ACCENT_SOFT = '#FEF2F2';
 
 const ANALYSIS_STEPS = [
-  { id: 'stt', label: '음성 변환' },
+  { id: 'stt', label: '음성을 텍스트로 변환' },
   { id: 'parse', label: '지출 정보 추출' },
-  { id: 'category', label: '카테고리 자동 분류' },
+  { id: 'location', label: '위치 정보 확인' },
 ];
 
 const FEATURES = [
@@ -95,7 +95,6 @@ export default function VoiceScreen() {
   const [permissionGranted, setPermissionGranted] = useState(false);
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const runRef = useRef(0);
   const classifyRunRef = useRef(0);
   const userEditedRef = useRef(false);
@@ -125,7 +124,6 @@ export default function VoiceScreen() {
   useEffect(
     () => () => {
       if (timerRef.current) clearInterval(timerRef.current);
-      if (tickRef.current) clearInterval(tickRef.current);
     },
     []
   );
@@ -184,26 +182,19 @@ export default function VoiceScreen() {
     const runId = runRef.current;
     setStep('analyzing');
 
-    if (tickRef.current) clearInterval(tickRef.current);
-    tickRef.current = setInterval(() => {
-      setAnalysisStep((p) => Math.min(p + 1, ANALYSIS_STEPS.length - 1));
-    }, 700);
-
     try {
       await audioRecorder.stop();
       const uri = audioRecorder.uri;
       const file = { uri, name: 'audio.m4a', type: 'audio/m4a' };
-      const pipe = await processVoice(file);
+      const pipe = await processVoice(file, (stage) => {
+        setAnalysisStep(stage === 'transcribing' ? 0 : 1);
+      });
+      setAnalysisStep(2);
       const found = pipe.data.storeName
         ? await resolveExpensePlace(pipe.data.storeName)
         : null;
 
-      if (tickRef.current) {
-        clearInterval(tickRef.current);
-        tickRef.current = null;
-      }
       if (runId !== runRef.current) return;
-      setAnalysisStep(ANALYSIS_STEPS.length - 1);
 
       const storeName =
         found && pipe.data.storeName
@@ -222,10 +213,6 @@ export default function VoiceScreen() {
       setStep('review');
       if (storeName) void classifyStore(storeName, true);
     } catch (e: any) {
-      if (tickRef.current) {
-        clearInterval(tickRef.current);
-        tickRef.current = null;
-      }
       if (runId !== runRef.current) return;
       Alert.alert('분석 실패', e?.message ?? '다시 시도해주세요.', [
         { text: '확인', onPress: reset },

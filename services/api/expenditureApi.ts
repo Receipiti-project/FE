@@ -36,6 +36,8 @@ type ApiErrorBody = {
   error?: string;
 };
 
+export type ImageAnalysisStage = "preparing" | "requesting";
+
 /* ─── GET /api/v1/expenditures (월별 목록) 타입 ─── */
 
 /** 지출 목록 항목 */
@@ -162,10 +164,12 @@ export type UpdateExpenditureDto = {
 async function postExpenditureImage<T>(
   path: string,
   uri: string,
-  label: string
+  label: string,
+  onStage?: (stage: ImageAnalysisStage) => void
 ): Promise<T> {
   const url = apiUrl(path);
   const headers = buildAuthHeaders();
+  onStage?.("preparing");
   const upload = await prepareImageForUpload(uri).catch((error) => {
     throw new Error(
       `${label} 이미지 최적화 실패: ${(error as Error)?.message ?? "이미지를 처리할 수 없어요."}`
@@ -181,6 +185,7 @@ async function postExpenditureImage<T>(
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), API_OCR_TIMEOUT_MS);
+  onStage?.("requesting");
 
   let res: Response;
   try {
@@ -253,8 +258,11 @@ async function postExpenditureImage<T>(
  * POST /api/v1/expenditures/ocr
  * 영수증 이미지를 서버로 전송 → 상호명·금액·날짜 추출
  */
-export function ocrReceipt(uri: string): Promise<OcrApiResponse> {
-  return postExpenditureImage("/api/v1/expenditures/ocr", uri, "OCR");
+export function ocrReceipt(
+  uri: string,
+  onStage?: (stage: ImageAnalysisStage) => void
+): Promise<OcrApiResponse> {
+  return postExpenditureImage("/api/v1/expenditures/ocr", uri, "OCR", onStage);
 }
 
 /**
@@ -262,12 +270,14 @@ export function ocrReceipt(uri: string): Promise<OcrApiResponse> {
  * 카드 결제 알림 이미지를 서버로 전송 → 결제 정보 분석
  */
 export function analyzeCardNotification(
-  uri: string
+  uri: string,
+  onStage?: (stage: ImageAnalysisStage) => void
 ): Promise<CardNotificationAnalysisResponse> {
   return postExpenditureImage(
     "/api/v1/expenditures/card-notification/analyze",
     uri,
-    "카드 결제 이미지 분석"
+    "카드 결제 이미지 분석",
+    onStage
   );
 }
 
