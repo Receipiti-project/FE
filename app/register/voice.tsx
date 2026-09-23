@@ -264,6 +264,7 @@ export default function VoiceScreen() {
   };
 
   const applyPlace = (picked: Place) => {
+    classifyRunRef.current += 1;
     if (voiceData?.storeName && voiceData.storeName !== place?.placeName) {
       setBaseName(voiceData.storeName);
     }
@@ -280,6 +281,7 @@ export default function VoiceScreen() {
   };
 
   const dropPlace = () => {
+    classifyRunRef.current += 1;
     if (baseName && voiceData?.storeName === place?.placeName) {
       updateVoiceData({ storeName: baseName });
     }
@@ -484,7 +486,10 @@ export default function VoiceScreen() {
           <TextInput
             style={styles.input}
             value={voiceData?.storeName ?? ''}
-            onChangeText={(v) => updateVoiceData({ storeName: v || null })}
+            onChangeText={(v) => {
+              classifyRunRef.current += 1;
+              updateVoiceData({ storeName: v || null });
+            }}
             onEndEditing={() => classifyStore(voiceData?.storeName ?? '')}
             placeholder="가맹점명을 입력하세요"
             placeholderTextColor="#9CA3AF"

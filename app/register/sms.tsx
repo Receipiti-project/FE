@@ -260,6 +260,7 @@ export default function SmsScreen() {
       : (baseName ?? draft?.storeName ?? '');
 
   const applyPlace = (picked: Place) => {
+    classifyRunRef.current += 1;
     if (draft?.storeName && draft.storeName !== place?.placeName) {
       setBaseName(draft.storeName);
     }
@@ -276,6 +277,7 @@ export default function SmsScreen() {
   };
 
   const dropPlace = () => {
+    classifyRunRef.current += 1;
     if (baseName && draft?.storeName === place?.placeName) {
       updateDraft({ storeName: baseName });
     }
@@ -415,15 +417,32 @@ export default function SmsScreen() {
 
     const recommendation = await getCategoryRecommendation(name).catch(() => null);
     const decision = resolveCategoryRecommendation(recommendation, categories);
-    const autoPick = !s.userSelectedCategory && decision.selectedCategoryId != null;
 
-    updateScan(s.id, {
-      recommendedCategoryId: decision.recommendedCategoryId,
-      categoryMatchedCount: decision.matchedCount,
-      ...(autoPick && {
-        categoryId: decision.selectedCategoryId,
-        categoryAutoApplied: true,
-      }),
+    setScanEdits((prev) => {
+      const current = prev[s.id] ?? {};
+      const nameChanged =
+        current.storeName != null && current.storeName.trim() !== name;
+      const autoPick =
+        !current.userSelectedCategory &&
+        !nameChanged &&
+        decision.selectedCategoryId != null;
+
+      return {
+        ...prev,
+        [s.id]: {
+          ...current,
+          ...(nameChanged
+            ? {}
+            : {
+                recommendedCategoryId: decision.recommendedCategoryId,
+                categoryMatchedCount: decision.matchedCount,
+              }),
+          ...(autoPick && {
+            categoryId: decision.selectedCategoryId,
+            categoryAutoApplied: true,
+          }),
+        },
+      };
     });
   };
 
@@ -762,7 +781,10 @@ export default function SmsScreen() {
               <TextInput
                 style={styles.input}
                 value={draft.storeName ?? ''}
-                onChangeText={(v) => updateDraft({ storeName: v || null })}
+                onChangeText={(v) => {
+                  classifyRunRef.current += 1;
+                  updateDraft({ storeName: v || null });
+                }}
                 onEndEditing={() => classifyStore(draft.storeName ?? '')}
                 placeholder="가맹점명을 입력하세요"
                 placeholderTextColor="#9CA3AF"
