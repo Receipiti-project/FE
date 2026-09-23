@@ -77,12 +77,6 @@ export const styles = StyleSheet.create({
     color: "#111827",
     marginBottom: 12,
   },
-  cardLabelRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 12,
-  },
   fieldLabel: {
     fontSize: 11,
     color: "#6B7280",
@@ -141,12 +135,6 @@ export const styles = StyleSheet.create({
     backgroundColor: "#7C3AED",
     marginLeft: 2,
   },
-  confPill: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 999,
-  },
-  confPillText: { fontSize: 10, fontWeight: "700" },
   feedbackBox: {
     flexDirection: "row",
     gap: 6,

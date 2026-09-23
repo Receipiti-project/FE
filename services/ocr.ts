@@ -5,6 +5,7 @@ import {
 } from "@/services/textRecognition";
 import {
   analyzeCardNotification,
+  ImageAnalysisStage,
   ocrReceipt,
   createExpenditure,
   formatIsoToKorean,
@@ -52,11 +53,14 @@ function emptyReceiptResult(): ReceiptOcrResult {
   };
 }
 
-export async function parseReceipt(uri: string): Promise<ReceiptOcrResult> {
+export async function parseReceipt(
+  uri: string,
+  onStage?: (stage: ImageAnalysisStage) => void
+): Promise<ReceiptOcrResult> {
   if (!isApiConfigured()) {
     return emptyReceiptResult();
   }
-  const ocr = await ocrReceipt(uri);
+  const ocr = await ocrReceipt(uri, onStage);
   return {
     storeName: ocr.storeName ?? "",
     purchasedAt: ocr.paymentDate ? formatIsoToKorean(ocr.paymentDate) : "",
@@ -100,12 +104,15 @@ function captureDate(value?: string): { paidAt?: string; paidAtIso?: string } {
   };
 }
 
-export async function parseCapture(uri: string): Promise<CaptureOcrResult> {
+export async function parseCapture(
+  uri: string,
+  onStage?: (stage: ImageAnalysisStage) => void
+): Promise<CaptureOcrResult> {
   if (!isApiConfigured()) {
     throw new Error("카드 결제 이미지 분석 서버가 연결되지 않았어요.");
   }
 
-  const analysis = await analyzeCardNotification(uri);
+  const analysis = await analyzeCardNotification(uri, onStage);
   if (typeof analysis.paymentNotification !== "boolean") {
     throw new Error("카드 결제 이미지 분석 서버 응답 형식이 올바르지 않아요.");
   }

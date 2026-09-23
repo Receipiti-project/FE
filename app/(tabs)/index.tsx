@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo } from "react";
 import {
   View,
   Text,
@@ -11,9 +11,6 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import {
-  ACTIVITY_ZONES,
-  AI_INSIGHTS,
-  CATEGORIZATION_STATS,
   formatKRW,
   getCategory,
   IoniconName,
@@ -24,7 +21,9 @@ import {
   formatTimeReal,
 } from "@/hooks/useExpenditures";
 import { useBudget } from "@/contexts/BudgetContext";
+import { isApiConfigured } from "@/services/api/config";
 import { expenditureDateParam } from "@/services/api/expenditureApi";
+import { buildActivityZones } from "@/scripts/activityZones";
 
 const BLUE = "#3B82F6";
 
@@ -46,16 +45,79 @@ export default function HomeScreen() {
   const { monthlyBudget } = useBudget();
   const {
     loading,
+    error,
     totalAmount,
+    txCount,
     todayTotal,
     todayCount,
+    allItems,
     recentItems,
     byCategoryReport,
   } = useExpenditures(4);
 
   const usedRatio = Math.min(totalAmount / monthlyBudget, 1);
   const remaining = Math.max(monthlyBudget - totalAmount, 0);
-  const insight = AI_INSIGHTS[0];
+  const hasServerData = isApiConfigured() && !error;
+  const insight = useMemo(() => {
+    if (error) {
+      return {
+        title: "소비 데이터를 불러오지 못했어요",
+        body: "잠시 후 다시 시도하거나 리포트 화면에서 새로고침해 주세요.",
+        icon: "alert-circle-outline" as IoniconName,
+        accent: "#EF4444",
+      };
+    }
+    if (!isApiConfigured()) {
+      return {
+        title: "서버 연결이 필요해요",
+        body: "실제 지출 데이터를 불러오면 이번 달 소비 인사이트를 표시합니다.",
+        icon: "cloud-offline-outline" as IoniconName,
+        accent: "#6B7280",
+      };
+    }
+    const topCategory = byCategoryReport[0];
+    if (!topCategory || totalAmount <= 0) {
+      return {
+        title: "아직 분석할 지출이 없어요",
+        body: "지출을 등록하면 이번 달 소비 비중이 가장 큰 카테고리를 알려드려요.",
+        icon: "pie-chart-outline" as IoniconName,
+        accent: "#6B7280",
+      };
+    }
+    const share = Math.round((topCategory.total / totalAmount) * 100);
+    return {
+      title: `${topCategory.name} 지출이 가장 많아요`,
+      body: `이번 달 ${formatKRW(topCategory.total)}으로 전체 지출의 ${share}%예요.`,
+      icon: "pie-chart-outline" as IoniconName,
+      accent: "#A855F7",
+    };
+  }, [byCategoryReport, error, totalAmount]);
+
+  const activityZones = useMemo(() => {
+    if (!isApiConfigured() || error) return [];
+    const located = allItems.flatMap((item) =>
+      item.latitude != null && item.longitude != null
+        ? [{
+            latitude: item.latitude,
+            longitude: item.longitude,
+            amount: item.amount,
+            address: item.address ?? "",
+            paymentDate: item.datetime,
+          }]
+        : []
+    );
+    return buildActivityZones(located).slice(0, 3);
+  }, [allItems, error]);
+
+  const classifiedCount = hasServerData ? allItems.filter(
+    (item) => item.categoryName.trim() && item.categoryName !== "미분류"
+  ).length : 0;
+  const unclassifiedCount = hasServerData
+    ? Math.max(txCount - classifiedCount, 0)
+    : 0;
+  const classificationRate = hasServerData && txCount > 0
+    ? Math.round((classifiedCount / txCount) * 100)
+    : 0;
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
@@ -144,10 +206,10 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* AI 인사이트 미리보기 */}
+        {/* 실제 지출 기반 소비 인사이트 */}
         <View style={styles.section}>
           <View style={styles.sectionHead}>
-            <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>AI 인사이트</Text>
+            <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>소비 인사이트</Text>
             <TouchableOpacity onPress={() => router.push("/(tabs)/report" as any)}>
               <Text style={styles.linkText}>리포트 보기 ›</Text>
             </TouchableOpacity>
@@ -221,44 +283,67 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
-            {ACTIVITY_ZONES.map((z) => (
-              <View key={z.id} style={styles.zoneCard}>
-                <View style={[styles.zoneAccent, { backgroundColor: z.color }]} />
-                <View style={styles.zoneHead}>
-                  <Ionicons name="location" size={14} color={z.color} />
-                  <Text style={styles.zoneLabel}>{z.label}</Text>
-                </View>
-                <Text style={styles.zoneRole}>{z.role}</Text>
-                <Text style={styles.zoneSpend}>{formatKRW(z.totalSpend)}</Text>
-                <Text style={styles.zoneMeta}>{z.visitCount}회 · {z.radius}</Text>
+            {loading ? (
+              <View style={styles.zoneEmptyCard}>
+                <ActivityIndicator color={BLUE} />
               </View>
-            ))}
+            ) : !hasServerData ? (
+              <View style={styles.zoneEmptyCard}>
+                <Ionicons name="cloud-offline-outline" size={20} color="#9CA3AF" />
+                <Text style={styles.zoneEmptyText}>실제 위치 데이터를 불러오지 못했어요.</Text>
+              </View>
+            ) : activityZones.length > 0 ? (
+              activityZones.map((z) => (
+                <View key={z.id} style={styles.zoneCard}>
+                  <View style={[styles.zoneAccent, { backgroundColor: z.color }]} />
+                  <View style={styles.zoneHead}>
+                    <Ionicons name="location" size={14} color={z.color} />
+                    <Text style={styles.zoneLabel} numberOfLines={1}>{z.label}</Text>
+                  </View>
+                  <Text style={styles.zoneRole}>{z.role}</Text>
+                  <Text style={styles.zoneSpend}>{formatKRW(z.totalSpend)}</Text>
+                  <Text style={styles.zoneMeta}>{z.visitCount}회 · 반경 {z.radiusMeters}m</Text>
+                </View>
+              ))
+            ) : (
+              <View style={styles.zoneEmptyCard}>
+                <Ionicons name="location-outline" size={20} color="#9CA3AF" />
+                <Text style={styles.zoneEmptyText}>
+                  위치가 기록된 지출이 같은 지역에서 2건 이상 쌓이면 표시됩니다.
+                </Text>
+              </View>
+            )}
           </ScrollView>
         </View>
 
-        {/* 자동분류 학습 상태 */}
+        {/* 실제 지출 기반 카테고리 분류 현황 */}
         <View style={styles.section}>
           <View style={styles.learnCard}>
             <View style={styles.learnIconWrap}>
               <Ionicons name="bulb-outline" size={20} color="#7C3AED" />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.learnTitle}>카테고리 자동분류 학습 중</Text>
-              <Text style={styles.learnSub}>
-                자동 매칭 {CATEGORIZATION_STATS.autoMatched}건 · 사용자 수정{" "}
-                {CATEGORIZATION_STATS.userCorrected}건
-              </Text>
-              <View style={styles.learnBarTrack}>
-                <View
-                  style={[
-                    styles.learnBarFill,
-                    { width: `${CATEGORIZATION_STATS.accuracy * 100}%` },
-                  ]}
-                />
-              </View>
-              <Text style={styles.learnPct}>
-                정확도 {Math.round(CATEGORIZATION_STATS.accuracy * 100)}%
-              </Text>
+              <Text style={styles.learnTitle}>카테고리 분류 현황</Text>
+              {loading ? (
+                <ActivityIndicator color="#7C3AED" style={{ marginTop: 10 }} />
+              ) : !hasServerData ? (
+                <Text style={styles.learnSub}>실제 지출 데이터를 불러오지 못했어요.</Text>
+              ) : (
+                <>
+                  <Text style={styles.learnSub}>
+                    분류 {classifiedCount}건 · 미분류 {unclassifiedCount}건
+                  </Text>
+                  <View style={styles.learnBarTrack}>
+                    <View
+                      style={[
+                        styles.learnBarFill,
+                        { width: `${classificationRate}%` },
+                      ]}
+                    />
+                  </View>
+                  <Text style={styles.learnPct}>분류율 {classificationRate}%</Text>
+                </>
+              )}
             </View>
           </View>
         </View>
@@ -318,6 +403,8 @@ const styles = StyleSheet.create({
   zoneRole: { color: "#9CA3AF", fontSize: 11, marginTop: 2 },
   zoneSpend: { color: "#111827", fontWeight: "800", fontSize: 16, marginTop: 8 },
   zoneMeta: { color: "#6B7280", fontSize: 11, marginTop: 4 },
+  zoneEmptyCard: { width: 260, minHeight: 112, backgroundColor: "#FFFFFF", borderRadius: 16, padding: 16, borderWidth: 1, borderColor: "#F3F4F6", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
+  zoneEmptyText: { flex: 1, color: "#6B7280", fontSize: 12, lineHeight: 18 },
   learnCard: { flexDirection: "row", backgroundColor: "#FFFFFF", borderRadius: 16, padding: 16, borderWidth: 1, borderColor: "#F3F4F6", gap: 12, alignItems: "flex-start" },
   learnIconWrap: { width: 38, height: 38, borderRadius: 12, backgroundColor: "#F5F3FF", alignItems: "center", justifyContent: "center" },
   learnTitle: { color: "#111827", fontWeight: "700", fontSize: 14 },

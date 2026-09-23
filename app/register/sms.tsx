@@ -55,13 +55,13 @@ const ACCENT = '#F59E0B';
 const FEATURES = [
   { icon: 'chatbox-ellipses-outline', label: '결제 문자' },
   { icon: 'scan-outline', label: '자동 스캔' },
-  { icon: 'sparkles-outline', label: 'AI 분류' },
+  { icon: 'pricetag-outline', label: '카테고리 추천' },
 ] as const;
 
 const IOS_FEATURES = [
   { icon: 'chatbox-ellipses-outline', label: '결제 문자' },
   { icon: 'clipboard-outline', label: '붙여넣기' },
-  { icon: 'sparkles-outline', label: 'AI 분류' },
+  { icon: 'pricetag-outline', label: '카테고리 추천' },
 ] as const;
 
 type Step = 'input' | 'scan' | 'review';
@@ -114,6 +114,7 @@ type ScanItem = {
   done: boolean;
   include: boolean;
   expanded: boolean;
+  usedAi: boolean;
 };
 
 export default function SmsScreen() {
@@ -127,6 +128,7 @@ export default function SmsScreen() {
   const [userEditedCategory, setUserEditedCategory] = useState(false);
   const [matchedCount, setMatchedCount] = useState(0);
   const [draft, setDraft] = useState<Draft | null>(null);
+  const [parseUsedAi, setParseUsedAi] = useState(false);
   const [place, setPlace] = useState<ResolvedPlace | null>(null);
   const [placeDropped, setPlaceDropped] = useState(false);
   const [baseName, setBaseName] = useState<string | null>(null);
@@ -158,6 +160,7 @@ export default function SmsScreen() {
     }
     setLoading(true);
     setDraft(null);
+    setParseUsedAi(false);
     setBaseName(null);
     setPlace(null);
     setPlaceDropped(false);
@@ -168,6 +171,7 @@ export default function SmsScreen() {
     setMatchedCount(0);
     try {
       const r = await smsToExpense(t);
+      setParseUsedAi(r.llmCalled);
       const found = r.data.storeName
         ? await resolveExpensePlace(r.data.storeName, t)
         : null;
@@ -243,6 +247,7 @@ export default function SmsScreen() {
 
   const clearResult = () => {
     setDraft(null);
+    setParseUsedAi(false);
     setPlace(null);
     setPlaceDropped(false);
     setBaseName(null);
@@ -377,12 +382,14 @@ export default function SmsScreen() {
             done,
             include: !done && ready && (e.include ?? complete),
             expanded: e.expanded ?? false,
+            usedAi: m.result?.llmCalled ?? false,
           };
         }),
     [scanned, scanEdits, registeredIds]
   );
 
   const selectedScans = scanItems.filter((s) => s.include);
+  const scanUsedAi = scanItems.some((s) => s.usedAi);
   const selectedScanTotal = selectedScans.reduce(
     (sum, s) => sum + (s.draft.amount ?? 0),
     0
@@ -618,10 +625,12 @@ export default function SmsScreen() {
                   결제 {scanItems.length}건 감지 · {selectedScans.length}건 선택됨
                 </Text>
               </View>
-              <View style={styles.aiBadge}>
-                <Ionicons name="sparkles" size={11} color="#FFFFFF" />
-                <Text style={styles.aiBadgeText}>AI</Text>
-              </View>
+              {scanUsedAi && (
+                <View style={styles.aiBadge}>
+                  <Ionicons name="sparkles" size={11} color="#FFFFFF" />
+                  <Text style={styles.aiBadgeText}>AI 보완</Text>
+                </View>
+              )}
             </View>
 
             <View style={styles.helperRow}>
@@ -756,16 +765,17 @@ export default function SmsScreen() {
             contentContainerStyle={styles.scroll}
             keyboardShouldPersistTaps="handled"
           >
-            <View style={styles.aiNotice}>
-              <View style={styles.aiBadge}>
-                <Ionicons name="sparkles" size={11} color="#FFFFFF" />
-                <Text style={styles.aiBadgeText}>AI 분석</Text>
+            {parseUsedAi && (
+              <View style={styles.aiNotice}>
+                <View style={styles.aiBadge}>
+                  <Ionicons name="sparkles" size={11} color="#FFFFFF" />
+                  <Text style={styles.aiBadgeText}>AI 보완</Text>
+                </View>
+                <Text style={styles.aiNoticeText}>
+                  정규식으로 찾지 못한 항목을 AI가 보완했습니다. 내용을 확인하고 필요한 부분을 수정해주세요.
+                </Text>
               </View>
-              <Text style={styles.aiNoticeText}>
-                잘못 인식된 부분은 직접 수정해주세요. 수정 내용은 자동분류
-                학습에 반영됩니다.
-              </Text>
-            </View>
+            )}
 
             {missing.length > 0 && (
               <View style={styles.warnNotice}>

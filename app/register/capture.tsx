@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -92,8 +92,6 @@ type DraftPayment = {
   method: PaymentMethod;
   categoryId: number | null;
   initialCategoryId: number | null;
-  confidence: number;
-  categoryConfidence: number;
   categoryMatchedCount: number;
   categoryAutoApplied: boolean;
   userSelectedCategory: boolean;
@@ -105,10 +103,9 @@ type DraftPayment = {
 };
 
 const ANALYSIS_STEPS = [
-  { id: "upload", label: "이미지 업로드" },
-  { id: "ocr", label: "OCR 텍스트 추출" },
-  { id: "extract", label: "결제 항목 분리" },
-  { id: "classify", label: "카테고리 자동 분류" },
+  { id: "prepare", label: "이미지 준비" },
+  { id: "analyze", label: "결제정보 분석 요청" },
+  { id: "enrich", label: "카테고리·위치 조회" },
 ];
 
 const PAYMENT_METHODS: PaymentMethod[] = [
@@ -136,19 +133,8 @@ export default function CaptureScreen() {
   const [pasteOpen, setPasteOpen] = useState(false);
   const [pasteText, setPasteText] = useState("");
   const [pickerDraftId, setPickerDraftId] = useState<string | null>(null);
-  const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (tickRef.current) clearInterval(tickRef.current);
-    };
-  }, []);
 
   const reset = () => {
-    if (tickRef.current) {
-      clearInterval(tickRef.current);
-      tickRef.current = null;
-    }
     setImageUri(null);
     setStep("idle");
     setAnalysisStep(0);
@@ -188,8 +174,6 @@ export default function CaptureScreen() {
           method: p.method ?? "카드",
           categoryId: decision.selectedCategoryId,
           initialCategoryId: decision.recommendedCategoryId,
-          confidence: p.confidence ?? 0,
-          categoryConfidence: decision.confidence,
           categoryMatchedCount: decision.matchedCount,
           categoryAutoApplied: decision.autoApplicable,
           userSelectedCategory: false,
@@ -211,18 +195,10 @@ export default function CaptureScreen() {
     setStep("analyzing");
     setAnalysisStep(0);
 
-    if (tickRef.current) clearInterval(tickRef.current);
-    tickRef.current = setInterval(() => {
-      setAnalysisStep((p) => Math.min(p + 1, ANALYSIS_STEPS.length - 1));
-    }, 320);
-
     try {
-      const res = await parseCapture(uri);
-      if (tickRef.current) {
-        clearInterval(tickRef.current);
-        tickRef.current = null;
-      }
-      setAnalysisStep(ANALYSIS_STEPS.length - 1);
+      const res = await parseCapture(uri, (stage) => {
+        setAnalysisStep(stage === "preparing" ? 0 : 1);
+      });
       if (res.payments.length === 0) {
         setImageUri(null);
         setStep("idle");
@@ -236,10 +212,9 @@ export default function CaptureScreen() {
         );
         return;
       }
+      setAnalysisStep(2);
       await applyOcrResult(res);
     } catch (e) {
-      if (tickRef.current) clearInterval(tickRef.current);
-      tickRef.current = null;
       const msg = (e as Error)?.message ?? "";
       if (msg.startsWith("AUTH_EXPIRED:")) {
         Alert.alert("인증 만료", msg.replace("AUTH_EXPIRED:", ""), [{ text: "확인", onPress: reset }]);
@@ -622,7 +597,6 @@ function PaymentCard({
     (category) => category.categoryId === draft.categoryId
   );
   const cat = getCategoryByName(selectedCategory?.name ?? "미분류");
-  const conf = Math.round(draft.confidence * 100);
   const userEdited = draft.userSelectedCategory;
 
   return (
@@ -670,23 +644,6 @@ function PaymentCard({
             </View>
             <View style={styles.payTag}>
               <Text style={styles.payTagText}>{draft.method}</Text>
-            </View>
-            <View
-              style={[
-                styles.payTag,
-                {
-                  backgroundColor: conf >= 90 ? "#ECFDF5" : "#FFF7ED",
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.payTagText,
-                  { color: conf >= 90 ? "#059669" : "#D97706" },
-                ]}
-              >
-                분석 신뢰도 {conf}%
-              </Text>
             </View>
             {draft.paidAt && (
               <Text style={styles.payTime}>{draft.paidAt}</Text>
@@ -813,8 +770,8 @@ function PaymentCard({
             {draft.initialCategoryId && !draft.userSelectedCategory && (
               <Text style={styles.inputHint}>
                 {draft.categoryAutoApplied
-                  ? `선택 이력 ${draft.categoryMatchedCount}회 · 신뢰도 ${Math.round(draft.categoryConfidence * 100)}%로 자동 적용`
-                  : `선택 이력 ${draft.categoryMatchedCount}회 · 추천 신뢰도 ${Math.round(draft.categoryConfidence * 100)}% · 카테고리를 확인해 주세요.`}
+                  ? `선택 이력 ${draft.categoryMatchedCount}회 · 자동 적용`
+                  : `선택 이력 ${draft.categoryMatchedCount}회 · 추천 카테고리를 확인해 주세요.`}
               </Text>
             )}
           </View>
@@ -972,7 +929,7 @@ function AnalyzingState({
           </View>
         )}
         <Text style={styles.analyzeHeading}>이미지를 분석하고 있어요</Text>
-        <Text style={styles.analyzeSub}>OCR + AI 파싱이 진행됩니다</Text>
+        <Text style={styles.analyzeSub}>결제정보 분석 결과를 기다리고 있어요</Text>
         <View style={styles.stepList}>
           {ANALYSIS_STEPS.map((s, i) => {
             const done = i < currentStep;

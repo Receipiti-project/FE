@@ -21,6 +21,9 @@ export type DisplayTransaction = {
   datetime: string;
   method: string;
   memo?: string;
+  address?: string;
+  latitude?: number;
+  longitude?: number;
 };
 
 export type DailySpending = {
@@ -97,6 +100,9 @@ function toDisplay(item: ExpenditureListItem): DisplayTransaction {
     datetime: item.expenditureDate,
     method: "카드",
     memo: item.memo,
+    address: item.address,
+    latitude: item.latitude,
+    longitude: item.longitude,
   };
 }
 
