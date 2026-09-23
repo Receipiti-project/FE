@@ -7,7 +7,11 @@ import {
 } from '@/services/api/expenditureApi';
 import { ClientExpenditureInputType } from '@/services/expenditureMetadata';
 import { getLocationHint } from './currentLocation';
-import { resolveLocation } from './locationPipeline';
+import {
+  canonicalStoreName,
+  namesRelated,
+  resolveLocation,
+} from './locationPipeline';
 import { haversineKm, LatLng } from './mapGeo';
 import { Place } from './placeSearch';
 
@@ -19,6 +23,8 @@ export type ExpenseDraft = {
   paymentDate: string | null;
   category: string | null;
   memo: string | null;
+  categoryId?: number | null;
+  defaultCategoryId?: number | null;
 };
 
 const CATEGORY_IDS: CategoryId[] = CATEGORIES.map((c) => c.id);
@@ -35,9 +41,12 @@ const isValidAmount = (amount: number | null): amount is number =>
 export function missingRequiredFields(draft: ExpenseDraft): string[] {
   return [
     !isValidAmount(draft.amount) && '결제금액',
-    !draft.storeName?.trim() && '가게명',
+    !draft.storeName?.trim() && '가맹점명',
     !draft.paymentDate?.trim() && '결제일시',
-    !toCategoryId(draft.category) && '카테고리',
+    draft.categoryId == null &&
+      draft.defaultCategoryId == null &&
+      !toCategoryId(draft.category) &&
+      '카테고리',
   ].filter(Boolean) as string[];
 }
 
@@ -76,7 +85,8 @@ export async function resolveExpensePlace(
       loc.placeId != null &&
       loc.placeName != null &&
       loc.latitude != null &&
-      loc.longitude != null
+      loc.longitude != null &&
+      namesRelated(storeName, loc.placeName)
     ) {
       return {
         placeId: loc.placeId,
@@ -89,7 +99,7 @@ export async function resolveExpensePlace(
 
     if (loc.status === 'ambiguous' && near) {
       const pick = nearestWithin(loc.candidates, near, AUTO_PICK_RADIUS_KM);
-      if (pick) {
+      if (pick && namesRelated(storeName, pick.name)) {
         return {
           placeId: pick.id,
           placeName: pick.name,
@@ -130,7 +140,12 @@ export async function registerExpense(
   const storeName = draft.storeName?.trim();
   const paymentDate = draft.paymentDate?.trim();
 
-  if (!isValidAmount(amount) || !storeName || !paymentDate || !categoryId) {
+  if (
+    !isValidAmount(amount) ||
+    !storeName ||
+    !paymentDate ||
+    (draft.categoryId == null && draft.defaultCategoryId == null && !categoryId)
+  ) {
     throw new Error('필수 항목이 비어 있습니다.');
   }
 
@@ -143,11 +158,18 @@ export async function registerExpense(
         ? known
         : await resolveExpensePlace(storeName, rawSms, options);
 
-  const savedName = place?.placeName ?? storeName;
+  const savedName = place
+    ? canonicalStoreName(storeName, place.placeName)
+    : storeName;
 
   await createExpenditure(
     {
-      categoryId: await serverCategoryId(categoryId),
+      categoryId:
+        draft.categoryId ??
+        (draft.defaultCategoryId == null
+          ? await serverCategoryId(categoryId!)
+          : undefined),
+      defaultCategoryId: draft.defaultCategoryId ?? undefined,
       storeName: savedName,
       amount,
       expenditureDate,

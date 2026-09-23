@@ -1,11 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Linking,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -17,11 +18,20 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
-  CATEGORIES,
   CategoryId,
   formatKRW,
   getCategory,
+  getCategoryByName,
 } from '../../constants/mockData';
+import { CategoryPicker } from '../../components/category-picker';
+import { useCategories } from '../../contexts/CategoryContext';
+import {
+  getCategoryRecommendation,
+  resolveCategoryRecommendation,
+} from '../../services/api/categoryApi';
+import { enumCategoryId } from '../../scripts/storeCategory';
+import { formatPaymentDate } from '../../scripts/dateDisplay';
+import { expenditureDateParam } from '../../services/api/expenditureApi';
 import { smsToExpense } from '../../scripts/smsPipeline';
 import { useSharedSms } from '../../scripts/useSharedSms';
 import { useAndroidSms } from '../../scripts/useAndroidSms';
@@ -36,28 +46,25 @@ import {
   markSmsRegistered,
 } from '../../scripts/registeredSms';
 import PlacePicker from '../../components/location/PlacePicker';
+import { canonicalStoreName } from '../../scripts/locationPipeline';
 import { Place } from '../../scripts/placeSearch';
 
 const HITSLOP = { top: 12, bottom: 12, left: 12, right: 12 } as const;
 const ACCENT = '#F59E0B';
 
-function formatPaymentDate(value: string | null): string {
-  if (!value) return '';
+const FEATURES = [
+  { icon: 'chatbox-ellipses-outline', label: '결제 문자' },
+  { icon: 'scan-outline', label: '자동 스캔' },
+  { icon: 'sparkles-outline', label: 'AI 분류' },
+] as const;
 
-  const match = value.match(
-    /^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})/
-  );
-  if (!match) return value;
+const IOS_FEATURES = [
+  { icon: 'chatbox-ellipses-outline', label: '결제 문자' },
+  { icon: 'clipboard-outline', label: '붙여넣기' },
+  { icon: 'sparkles-outline', label: 'AI 분류' },
+] as const;
 
-  const [, year, month, day, rawHour, minute] = match;
-  const hour = Number(rawHour);
-  const period = hour < 12 ? '오전' : '오후';
-  const displayHour = hour % 12 || 12;
-
-  return `${Number(year)}년 ${Number(month)}월 ${Number(day)}일 ${period} ${displayHour}시 ${minute}분`;
-}
-
-type Step = 'input' | 'scan';
+type Step = 'input' | 'scan' | 'review';
 
 type Draft = {
   amount: number | null;
@@ -65,12 +72,19 @@ type Draft = {
   paymentDate: string | null;
   category: string | null;
   memo: string | null;
+  categoryId?: number | null;
 };
 
 type ScanEdit = {
   storeName?: string | null;
   amount?: number | null;
   category?: string | null;
+  categoryId?: number | null;
+  recommendedCategoryId?: number | null;
+  categoryMatchedCount?: number;
+  categoryAutoApplied?: boolean;
+  userSelectedCategory?: boolean;
+  recommendationLoaded?: boolean;
   memo?: string | null;
   place?: ResolvedPlace | null;
   placeLoading?: boolean;
@@ -86,6 +100,11 @@ type ScanItem = {
   body: string;
   draft: Draft;
   baseName: string | null;
+  recommendedCategoryId: number | null;
+  categoryMatchedCount: number;
+  categoryAutoApplied: boolean;
+  userSelectedCategory: boolean;
+  recommendationLoaded: boolean;
   place: ResolvedPlace | null | undefined;
   placeLoading: boolean;
   placeDropped: boolean;
@@ -98,8 +117,15 @@ type ScanItem = {
 };
 
 export default function SmsScreen() {
+  const { categories } = useCategories();
   const [step, setStep] = useState<Step>('input');
   const [input, setInput] = useState('');
+  const [pasteOpen, setPasteOpen] = useState(false);
+  const [pasteText, setPasteText] = useState('');
+  const [recommendedCategoryId, setRecommendedCategoryId] = useState<number | null>(null);
+  const [categoryAutoApplied, setCategoryAutoApplied] = useState(false);
+  const [userEditedCategory, setUserEditedCategory] = useState(false);
+  const [matchedCount, setMatchedCount] = useState(0);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [place, setPlace] = useState<ResolvedPlace | null>(null);
   const [placeDropped, setPlaceDropped] = useState(false);
@@ -112,6 +138,9 @@ export default function SmsScreen() {
   const [sourceSmsId, setSourceSmsId] = useState<string | null>(null);
   const [scanEdits, setScanEdits] = useState<Record<string, ScanEdit>>({});
   const [scanPickerFor, setScanPickerFor] = useState<string | null>(null);
+
+  const classifyRunRef = useRef(0);
+  const userEditedRef = useRef(false);
 
   const { messages: scanned, scanning, scan } = useAndroidSms();
 
@@ -132,26 +161,69 @@ export default function SmsScreen() {
     setBaseName(null);
     setPlace(null);
     setPlaceDropped(false);
+    setRecommendedCategoryId(null);
+    setCategoryAutoApplied(false);
+    setUserEditedCategory(false);
+    userEditedRef.current = false;
+    setMatchedCount(0);
     try {
       const r = await smsToExpense(t);
       const found = r.data.storeName
         ? await resolveExpensePlace(r.data.storeName, t)
         : null;
 
+      const storeName =
+        found && r.data.storeName
+          ? canonicalStoreName(r.data.storeName, found.placeName)
+          : r.data.storeName;
       setPlace(found);
       setBaseName(r.data.storeName);
       setDraft({
         amount: r.data.amount,
-        storeName: found?.placeName ?? r.data.storeName,
+        storeName,
         paymentDate: r.data.paymentDate,
         category: r.data.category,
         memo: r.data.memo,
+        categoryId: null,
       });
+      setPasteOpen(false);
+      setStep('review');
+      if (storeName) void classifyStore(storeName, true);
     } catch (e: any) {
       Alert.alert('파싱 실패', e?.message ?? String(e));
     } finally {
       setLoading(false);
     }
+  };
+
+  const classifyStore = async (storeName: string, parsed = false) => {
+    const name = storeName.trim();
+    if (!name) return;
+
+    const runId = ++classifyRunRef.current;
+    const recommendation = await getCategoryRecommendation(name).catch(() => null);
+    if (runId !== classifyRunRef.current) return;
+
+    const decision = resolveCategoryRecommendation(recommendation, categories);
+    setRecommendedCategoryId(decision.recommendedCategoryId);
+    setMatchedCount(decision.matchedCount);
+    if (userEditedRef.current) return;
+
+    setDraft((prev) =>
+      prev
+        ? {
+            ...prev,
+            categoryId: decision.selectedCategoryId,
+            category: parsed ? prev.category : null,
+          }
+        : prev
+    );
+    setCategoryAutoApplied(decision.selectedCategoryId != null);
+  };
+
+  const openPaste = () => {
+    setPasteText(input);
+    setPasteOpen(true);
   };
 
   const goScan = () => {
@@ -174,6 +246,12 @@ export default function SmsScreen() {
     setPlace(null);
     setPlaceDropped(false);
     setBaseName(null);
+    setRecommendedCategoryId(null);
+    setCategoryAutoApplied(false);
+    setUserEditedCategory(false);
+    userEditedRef.current = false;
+    setMatchedCount(0);
+    setStep('input');
   };
 
   const pickerQuery =
@@ -182,6 +260,7 @@ export default function SmsScreen() {
       : (baseName ?? draft?.storeName ?? '');
 
   const applyPlace = (picked: Place) => {
+    classifyRunRef.current += 1;
     if (draft?.storeName && draft.storeName !== place?.placeName) {
       setBaseName(draft.storeName);
     }
@@ -198,6 +277,7 @@ export default function SmsScreen() {
   };
 
   const dropPlace = () => {
+    classifyRunRef.current += 1;
     if (baseName && draft?.storeName === place?.placeName) {
       updateDraft({ storeName: baseName });
     }
@@ -218,7 +298,12 @@ export default function SmsScreen() {
     setSaving(true);
     try {
       await registerExpense(
-        draft,
+        {
+          ...draft,
+          categoryId: userEditedCategory ? draft.categoryId : null,
+          defaultCategoryId:
+            !userEditedCategory && categoryAutoApplied ? draft.categoryId : null,
+        },
         input,
         placeDropped ? null : (place ?? undefined),
         { inputType: 'SMS' }
@@ -228,7 +313,14 @@ export default function SmsScreen() {
         setRegisteredIds((prev) => [...prev, sourceSmsId]);
       }
       Alert.alert('등록 완료', '가계부에 추가되었어요.', [
-        { text: '확인', onPress: () => router.back() },
+        {
+          text: '확인',
+          onPress: () =>
+            router.replace({
+              pathname: '/(tabs)/budget',
+              params: { date: expenditureDateParam(draft.paymentDate ?? undefined) },
+            }),
+        },
       ]);
     } catch (e) {
       Alert.alert('저장 실패', (e as Error)?.message ?? '잠시 후 다시 시도해주세요.');
@@ -258,6 +350,7 @@ export default function SmsScreen() {
             category:
               'category' in e ? e.category ?? null : base?.category ?? null,
             memo: 'memo' in e ? e.memo ?? null : base?.memo ?? null,
+            categoryId: e.categoryId ?? null,
           };
           const done = registeredIds.includes(m.id);
           const ready = !m.parsing && !m.error && base != null;
@@ -269,6 +362,11 @@ export default function SmsScreen() {
             draft,
             baseName:
               'baseName' in e ? (e.baseName ?? null) : (base?.storeName ?? null),
+            recommendedCategoryId: e.recommendedCategoryId ?? null,
+            categoryMatchedCount: e.categoryMatchedCount ?? 0,
+            categoryAutoApplied: e.categoryAutoApplied ?? false,
+            userSelectedCategory: e.userSelectedCategory ?? false,
+            recommendationLoaded: e.recommendationLoaded ?? false,
             place: e.place,
             placeLoading: e.placeLoading ?? false,
             placeDropped: e.placeDropped ?? false,
@@ -307,9 +405,45 @@ export default function SmsScreen() {
     updateScan(s.id, {
       place: found,
       placeLoading: false,
-      ...(found && { storeName: found.placeName }),
+      ...(found && { storeName: canonicalStoreName(name, found.placeName) }),
     });
     return found;
+  };
+
+  const lookupScanCategory = async (s: ScanItem) => {
+    const name = s.draft.storeName?.trim();
+    updateScan(s.id, { recommendationLoaded: true });
+    if (!name) return;
+
+    const recommendation = await getCategoryRecommendation(name).catch(() => null);
+    const decision = resolveCategoryRecommendation(recommendation, categories);
+
+    setScanEdits((prev) => {
+      const current = prev[s.id] ?? {};
+      const nameChanged =
+        current.storeName != null && current.storeName.trim() !== name;
+      const autoPick =
+        !current.userSelectedCategory &&
+        !nameChanged &&
+        decision.selectedCategoryId != null;
+
+      return {
+        ...prev,
+        [s.id]: {
+          ...current,
+          ...(nameChanged
+            ? {}
+            : {
+                recommendedCategoryId: decision.recommendedCategoryId,
+                categoryMatchedCount: decision.matchedCount,
+              }),
+          ...(autoPick && {
+            categoryId: decision.selectedCategoryId,
+            categoryAutoApplied: true,
+          }),
+        },
+      };
+    });
   };
 
   const toggleScanExpand = (s: ScanItem) => {
@@ -317,6 +451,9 @@ export default function SmsScreen() {
     updateScan(s.id, { expanded: opening });
     if (opening && s.place === undefined && !s.placeLoading) {
       lookupScanPlace(s);
+    }
+    if (opening && !s.recommendationLoaded) {
+      lookupScanCategory(s);
     }
   };
 
@@ -387,6 +524,7 @@ export default function SmsScreen() {
 
     setBulkSaving(true);
     const saved: string[] = [];
+    let latestDate: string | null = null;
     let failed = 0;
 
     for (const s of selectedScans) {
@@ -395,13 +533,26 @@ export default function SmsScreen() {
           ? null
           : (s.place ?? (await lookupScanPlace(s)));
         await registerExpense(
-          s.draft,
+          {
+            ...s.draft,
+            categoryId: s.userSelectedCategory ? s.draft.categoryId : null,
+            defaultCategoryId:
+              !s.userSelectedCategory && s.categoryAutoApplied
+                ? s.draft.categoryId
+                : null,
+          },
           s.body,
           place,
           { useCurrentLocation: false, inputType: 'SMS' }
         );
         markSmsRegistered(s.id);
         saved.push(s.id);
+        if (
+          s.draft.paymentDate &&
+          (latestDate == null || s.draft.paymentDate > latestDate)
+        ) {
+          latestDate = s.draft.paymentDate;
+        }
       } catch (e) {
         console.warn('[sms] 선택 등록 실패', s.id, e);
         failed += 1;
@@ -413,14 +564,20 @@ export default function SmsScreen() {
 
     if (failed === 0) {
       Alert.alert('등록 완료', `${saved.length}건이 가계부에 추가되었어요.`, [
-        { text: '확인', onPress: () => router.back() },
+        {
+          text: '확인',
+          onPress: () =>
+            router.replace({
+              pathname: '/(tabs)/budget',
+              params: { date: expenditureDateParam(latestDate ?? undefined) },
+            }),
+        },
       ]);
     } else {
       Alert.alert('일부 실패', `${saved.length}건 등록, ${failed}건 실패`);
     }
   };
 
-  // ─── scan ───
   if (step === 'scan') {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
@@ -451,13 +608,20 @@ export default function SmsScreen() {
             contentContainerStyle={styles.scroll}
             keyboardShouldPersistTaps="handled"
           >
-            <Text style={styles.heading}>감지된 거래</Text>
-
-            <View style={styles.countRow}>
-              <Text style={styles.countText}>총 {scanItems.length}건</Text>
-              <Text style={styles.countText}>
-                {selectedScans.length}건 선택됨
-              </Text>
+            <View style={styles.sourceCard}>
+              <View style={styles.sourceIcon}>
+                <Ionicons name="scan-outline" size={20} color={ACCENT} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.sourceTitle}>문자 자동 스캔</Text>
+                <Text style={styles.sourceMeta}>
+                  결제 {scanItems.length}건 감지 · {selectedScans.length}건 선택됨
+                </Text>
+              </View>
+              <View style={styles.aiBadge}>
+                <Ionicons name="sparkles" size={11} color="#FFFFFF" />
+                <Text style={styles.aiBadgeText}>AI</Text>
+              </View>
             </View>
 
             <View style={styles.helperRow}>
@@ -558,218 +722,364 @@ export default function SmsScreen() {
     );
   }
 
-  // ─── input (default) ───
   const missing = draft ? missingRequiredFields(draft) : [];
+  const features = Platform.OS === 'android' ? FEATURES : IOS_FEATURES;
+  const selectedCategoryId =
+    draft?.categoryId ?? enumCategoryId(categories, draft?.category);
+
+  if (step === 'review' && draft) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={{ flex: 1 }}
+        >
+          <View style={styles.topBar}>
+            <TouchableOpacity
+              onPress={clearResult}
+              style={styles.iconBtn}
+              hitSlop={HITSLOP}
+            >
+              <Ionicons name="chevron-back" size={22} color="#111827" />
+            </TouchableOpacity>
+            <Text style={styles.topTitle}>문자 검토</Text>
+            <TouchableOpacity
+              onPress={clearResult}
+              style={styles.iconBtn}
+              hitSlop={HITSLOP}
+            >
+              <Ionicons name="refresh" size={20} color="#111827" />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView
+            contentContainerStyle={styles.scroll}
+            keyboardShouldPersistTaps="handled"
+          >
+            <View style={styles.aiNotice}>
+              <View style={styles.aiBadge}>
+                <Ionicons name="sparkles" size={11} color="#FFFFFF" />
+                <Text style={styles.aiBadgeText}>AI 분석</Text>
+              </View>
+              <Text style={styles.aiNoticeText}>
+                잘못 인식된 부분은 직접 수정해주세요. 수정 내용은 자동분류
+                학습에 반영됩니다.
+              </Text>
+            </View>
+
+            {missing.length > 0 && (
+              <View style={styles.warnNotice}>
+                <Ionicons name="warning-outline" size={14} color="#B45309" />
+                <Text style={styles.warnText}>
+                  비어 있는 항목: {missing.join(', ')}
+                </Text>
+              </View>
+            )}
+
+            <View style={styles.card}>
+              <Text style={styles.fieldLabel}>가맹점명</Text>
+              <TextInput
+                style={styles.input}
+                value={draft.storeName ?? ''}
+                onChangeText={(v) => {
+                  classifyRunRef.current += 1;
+                  updateDraft({ storeName: v || null });
+                }}
+                onEndEditing={() => classifyStore(draft.storeName ?? '')}
+                placeholder="가맹점명을 입력하세요"
+                placeholderTextColor="#9CA3AF"
+              />
+
+              <Text style={[styles.fieldLabel, { marginTop: 14 }]}>결제일시</Text>
+              <View style={styles.readonlyRow}>
+                <Ionicons name="time-outline" size={16} color="#6B7280" />
+                <Text style={styles.readonlyText}>
+                  {formatPaymentDate(draft.paymentDate) ||
+                    '결제일시를 인식하지 못했어요'}
+                </Text>
+              </View>
+
+              <Text style={[styles.fieldLabel, { marginTop: 14 }]}>
+                가맹점 위치
+              </Text>
+              <Pressable
+                style={({ pressed }) => [
+                  place ? styles.placeRow : styles.placeEmptyRow,
+                  pressed && { opacity: 0.7 },
+                ]}
+                onPress={() => setPickerOpen(true)}
+              >
+                <Ionicons
+                  name={place ? 'location' : 'location-outline'}
+                  size={14}
+                  color={place ? '#3B82F6' : '#9CA3AF'}
+                />
+                <Text
+                  style={place ? styles.placeText : styles.placeEmptyText}
+                  numberOfLines={2}
+                >
+                  {place
+                    ? (place.address ?? '위치를 찾았어요')
+                    : '위치가 지정되지 않았어요'}
+                </Text>
+                <Text style={styles.placeAction}>{place ? '변경' : '지정'}</Text>
+              </Pressable>
+            </View>
+
+            <View style={styles.card}>
+              <Text style={styles.cardLabel}>카테고리</Text>
+              <CategoryPicker
+                selectedId={selectedCategoryId}
+                recommendedCategoryId={recommendedCategoryId}
+                onSelect={(categoryId) => {
+                  userEditedRef.current = true;
+                  updateDraft({ categoryId });
+                  setCategoryAutoApplied(false);
+                  setUserEditedCategory(true);
+                }}
+              />
+              {recommendedCategoryId != null && !userEditedCategory && (
+                <Text style={styles.inputHint}>
+                  {categoryAutoApplied
+                    ? `선택 이력 ${matchedCount}회 · 자동 적용`
+                    : `선택 이력 ${matchedCount}회 · 추천 카테고리를 확인해 주세요.`}
+                </Text>
+              )}
+              {userEditedCategory && draft.categoryId !== recommendedCategoryId && (
+                <View style={styles.feedbackBox}>
+                  <Ionicons name="bulb-outline" size={14} color="#7C3AED" />
+                  <Text style={styles.feedbackText}>
+                    수정한 분류(
+                    {categories.find((c) => c.categoryId === draft.categoryId)?.name}
+                    )를 기억하고 같은 매장에 자동 적용해요.
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            <View style={[styles.card, styles.totalCard]}>
+              <Text style={styles.totalLabel}>총 결제금액</Text>
+              <TextInput
+                style={styles.totalInput}
+                value={draft.amount != null ? String(draft.amount) : ''}
+                onChangeText={(v) =>
+                  updateDraft({
+                    amount:
+                      v === ''
+                        ? null
+                        : parseInt(v.replace(/[^0-9]/g, ''), 10) || 0,
+                  })
+                }
+                keyboardType="number-pad"
+                placeholder="0"
+                placeholderTextColor="#D1D5DB"
+              />
+              <Text style={styles.totalSuffix}>원</Text>
+            </View>
+
+            <View style={styles.card}>
+              <Text style={styles.cardLabel}>메모 (선택)</Text>
+              <TextInput
+                style={[styles.input, styles.memoInput]}
+                value={draft.memo ?? ''}
+                onChangeText={(v) => updateDraft({ memo: v || null })}
+                multiline
+                placeholder="이 결제와 관련된 메모를 남겨두세요"
+                placeholderTextColor="#9CA3AF"
+                textAlignVertical="top"
+              />
+            </View>
+
+            <View style={{ height: 100 }} />
+          </ScrollView>
+
+          <View style={styles.reviewBottomBar}>
+            <TouchableOpacity
+              onPress={onRegister}
+              disabled={saving}
+              style={[styles.reviewSaveBtn, saving && { opacity: 0.6 }]}
+            >
+              {saving ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <>
+                  <Ionicons name="checkmark-circle" size={18} color="#FFFFFF" />
+                  <Text style={styles.saveBtnText}>
+                    {draft.amount ? `${formatKRW(draft.amount)} 등록` : '등록'}
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+
+        <PlacePicker
+          visible={pickerOpen}
+          storeName={pickerQuery}
+          onConfirm={applyPlace}
+          onOnlinePurchase={dropPlace}
+          onSkip={dropPlace}
+          onClose={() => setPickerOpen(false)}
+        />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.topBar}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn} hitSlop={HITSLOP}>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={styles.iconBtn}
+          hitSlop={HITSLOP}
+        >
           <Ionicons name="chevron-back" size={22} color="#111827" />
         </TouchableOpacity>
         <Text style={styles.topTitle}>문자로 등록</Text>
         <View style={styles.iconBtn} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-        <Text style={styles.heading}>문자 파싱</Text>
-        <Text style={styles.subheading}>
-          카드 결제 문자를 붙여넣으면 가맹점·금액·결제일시를 자동으로 채워드려요.
+      <ScrollView contentContainerStyle={{ padding: 20 }}>
+        <Text style={styles.emptyTitle}>
+          카드 결제 문자를 읽어 자동으로 입력해드려요
+        </Text>
+        <Text style={styles.emptySub}>
+          카드 결제 문자를 입력하면 가맹점·금액·결제 일시를 채워드려요.
         </Text>
 
-        <View style={styles.card}>
-          <Text style={styles.cardLabel}>SMS 입력</Text>
-          <TextInput
-            style={styles.textarea}
-            multiline
-            placeholder="SMS 본문을 붙여넣어주세요"
-            placeholderTextColor="#9CA3AF"
-            value={input}
-            onChangeText={setInput}
-          />
+        <View style={styles.featureRow}>
+          {features.map((f) => (
+            <View key={f.label} style={styles.featureItem}>
+              <View style={styles.featureIconWrap}>
+                <Ionicons name={f.icon} size={18} color={ACCENT} />
+              </View>
+              <Text style={styles.featureLabel}>{f.label}</Text>
+            </View>
+          ))}
         </View>
 
-        {Platform.OS === 'android' && (
-          <TouchableOpacity style={styles.bigPrimary} onPress={goScan}>
-            <Ionicons name="scan-outline" size={20} color="#FFFFFF" />
-            <Text style={styles.bigPrimaryText}>문자 자동 스캔</Text>
+        {Platform.OS === 'android' ? (
+          <>
+            <TouchableOpacity style={styles.bigPrimary} onPress={goScan}>
+              <Ionicons name="scan-outline" size={20} color="#FFFFFF" />
+              <Text style={styles.bigPrimaryText}>문자 자동 스캔</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.bigSecondary} onPress={openPaste}>
+              <Ionicons name="clipboard-outline" size={20} color={ACCENT} />
+              <Text style={styles.bigSecondaryText}>문자 텍스트로 등록</Text>
+            </TouchableOpacity>
+          </>
+        ) : (
+          <TouchableOpacity style={styles.bigPrimary} onPress={openPaste}>
+            <Ionicons name="clipboard-outline" size={20} color="#FFFFFF" />
+            <Text style={styles.bigPrimaryText}>문자 텍스트로 등록</Text>
           </TouchableOpacity>
         )}
 
         <TouchableOpacity
-          style={[
-            styles.bigSecondary,
-            Platform.OS !== 'android' && { marginTop: 12 },
-          ]}
+          style={styles.bigGhost}
           onPress={() => Linking.openURL('sms:')}
         >
-          <Ionicons name="chatbox-outline" size={20} color={ACCENT} />
-          <Text style={styles.bigSecondaryText}>문자 앱에서 가져오기</Text>
+          <Ionicons name="chatbox-outline" size={18} color="#6B7280" />
+          <Text style={styles.bigGhostText}>문자 앱에서 가져오기</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.parseBtn, loading && { opacity: 0.6 }]}
-          onPress={() => runParse(input)}
-          disabled={loading}
+        <View style={styles.tipBox}>
+          <Ionicons
+            name="information-circle-outline"
+            size={16}
+            color="#6B7280"
+          />
+          <Text style={styles.tipBoxText}>
+            카드사에서 받은 승인 문자를 그대로 붙여넣으면 가장 정확해요.
+          </Text>
+        </View>
+      </ScrollView>
+
+      <PasteSmsModal
+        open={pasteOpen}
+        value={pasteText}
+        loading={loading}
+        onChangeText={setPasteText}
+        onClose={() => setPasteOpen(false)}
+        onConfirm={() => {
+          setInput(pasteText);
+          setSourceSmsId(null);
+          runParse(pasteText);
+        }}
+      />
+    </SafeAreaView>
+  );
+}
+
+function PasteSmsModal({
+  open,
+  value,
+  loading,
+  onChangeText,
+  onClose,
+  onConfirm,
+}: {
+  open: boolean;
+  value: string;
+  loading: boolean;
+  onChangeText: (v: string) => void;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <Modal
+      visible={open}
+      transparent
+      animationType="slide"
+      onRequestClose={() => {
+        if (!loading) onClose();
+      }}
+    >
+      <View style={styles.modalBackdrop}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.modalCard}
         >
-          {loading ? (
-            <ActivityIndicator color="#FFFFFF" />
-          ) : (
-            <>
-              <Ionicons name="sparkles" size={16} color="#FFFFFF" />
-              <Text style={styles.parseBtnText}>거래 내역 파싱</Text>
-            </>
-          )}
-        </TouchableOpacity>
-
-        {draft && (
-          <View style={styles.card}>
-            <View style={styles.cardLabelRow}>
-              <Text style={styles.cardLabel}>인식 결과</Text>
-              <Pressable onPress={clearResult} hitSlop={HITSLOP}>
-                <Text style={styles.clearText}>지우기</Text>
-              </Pressable>
-            </View>
-
-            <FieldEditable
-              label="결제금액"
-              value={draft.amount != null ? String(draft.amount) : ''}
-              displayValue={draft.amount != null ? formatKRW(draft.amount) : ''}
-              onChange={(v) =>
-                updateDraft({
-                  amount: v === '' ? null : parseInt(v.replace(/[^0-9]/g, ''), 10) || 0,
-                })
-              }
-              placeholder="0"
-              keyboardType="number-pad"
-            />
-            <FieldEditable
-              label="가게명"
-              value={draft.storeName ?? ''}
-              onChange={(v) => updateDraft({ storeName: v || null })}
-              placeholder="가게명"
-            />
-            <FieldEditable
-              label="결제일시"
-              value={draft.paymentDate ?? ''}
-              displayValue={formatPaymentDate(draft.paymentDate)}
-              onChange={(v) => updateDraft({ paymentDate: v || null })}
-              placeholder="YYYY-MM-DDTHH:mm:ss"
-            />
-            <View style={{ marginBottom: 12 }}>
-              <Text style={styles.fieldLabel}>카테고리</Text>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={{ gap: 8 }}
-              >
-                {CATEGORIES.map((c) => {
-                  const active = draft.category?.toLowerCase() === c.id;
-                  return (
-                    <TouchableOpacity
-                      key={c.id}
-                      onPress={() =>
-                        updateDraft({ category: c.id.toUpperCase() })
-                      }
-                      style={[
-                        styles.catChip,
-                        active && {
-                          backgroundColor: `${c.color}1A`,
-                          borderColor: c.color,
-                        },
-                      ]}
-                    >
-                      <Ionicons
-                        name={c.icon}
-                        size={14}
-                        color={active ? c.color : '#6B7280'}
-                      />
-                      <Text
-                        style={[
-                          styles.catChipText,
-                          active && { color: c.color, fontWeight: '700' },
-                        ]}
-                      >
-                        {c.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-            </View>
-            <FieldEditable
-              label="메모"
-              value={draft.memo ?? ''}
-              onChange={(v) => updateDraft({ memo: v || null })}
-              placeholder="(선택)"
-              multiline
-            />
-
-            <Pressable
-              style={({ pressed }) => [
-                place ? styles.placeRow : styles.placeEmptyRow,
-                pressed && { opacity: 0.7 },
-              ]}
-              onPress={() => setPickerOpen(true)}
-            >
-              <Ionicons
-                name={place ? 'location' : 'location-outline'}
-                size={13}
-                color={place ? '#3B82F6' : '#9CA3AF'}
-              />
-              <Text
-                style={place ? styles.placeText : styles.placeEmptyText}
-                numberOfLines={2}
-              >
-                {place
-                  ? (place.address ?? '위치를 찾았어요')
-                  : '위치가 지정되지 않았어요'}
-              </Text>
-              <Text style={styles.placeAction}>
-                {place ? '변경' : '지정'}
-              </Text>
-            </Pressable>
+          <View style={styles.grabber} />
+          <View style={styles.modalHead}>
+            <Text style={styles.modalTitle}>결제 문자 붙여넣기</Text>
+            <TouchableOpacity onPress={onClose} hitSlop={HITSLOP} disabled={loading}>
+              <Ionicons name="close" size={22} color="#111827" />
+            </TouchableOpacity>
           </View>
-        )}
-
-        {draft && missing.length > 0 && (
-          <View style={styles.warnBox}>
-            <Ionicons name="warning-outline" size={14} color="#B45309" />
-            <Text style={styles.warnText}>
-              비어 있는 항목: {missing.join(', ')}
-            </Text>
-          </View>
-        )}
-
-        {draft && (
+          <Text style={styles.modalSub}>
+            카드사에서 받은 승인 문자를 그대로 붙여넣으면 가맹점·금액·결제 일시를
+            찾아드려요.
+          </Text>
+          <TextInput
+            multiline
+            value={value}
+            onChangeText={onChangeText}
+            placeholder={
+              '예)\n[Web발신]\n신한카드 승인\n홍*동님\n12,500원 일시불\n05/11 14:32\n스타벅스 강남R점'
+            }
+            placeholderTextColor="#9CA3AF"
+            style={styles.modalInput}
+            textAlignVertical="top"
+          />
           <TouchableOpacity
-            style={[styles.registerBtn, saving && { opacity: 0.6 }]}
-            onPress={onRegister}
-            disabled={saving}
+            onPress={onConfirm}
+            disabled={loading}
+            style={[styles.modalConfirm, loading && { opacity: 0.6 }]}
           >
-            {saving ? (
+            {loading ? (
               <ActivityIndicator color="#FFFFFF" />
             ) : (
               <>
-                <Ionicons name="checkmark-circle" size={18} color="#FFFFFF" />
-                <Text style={styles.registerBtnText}>등록</Text>
+                <Ionicons name="sparkles" size={16} color="#FFFFFF" />
+                <Text style={styles.modalConfirmText}>분석해서 채우기</Text>
               </>
             )}
           </TouchableOpacity>
-        )}
-
-        <View style={{ height: 24 }} />
-      </ScrollView>
-
-      <PlacePicker
-        visible={pickerOpen}
-        storeName={pickerQuery}
-        onConfirm={applyPlace}
-        onOnlinePurchase={dropPlace}
-        onSkip={dropPlace}
-        onClose={() => setPickerOpen(false)}
-      />
-    </SafeAreaView>
+        </KeyboardAvoidingView>
+      </View>
+    </Modal>
   );
 }
 
@@ -788,11 +1098,20 @@ function ScanCard({
   onChange: (patch: ScanEdit) => void;
   onRemove: () => void;
 }) {
+  const { categories } = useCategories();
   const { draft } = item;
   const ready = !item.parsing && !item.failed;
-  const cat = draft.category
-    ? getCategory(draft.category.toLowerCase() as CategoryId)
-    : null;
+  const selectedCategoryId =
+    draft.categoryId ?? enumCategoryId(categories, draft.category);
+  const selectedCategory = categories.find(
+    (c) => c.categoryId === selectedCategoryId
+  );
+  const cat = selectedCategory
+    ? getCategoryByName(selectedCategory.name)
+    : draft.category
+      ? getCategory(draft.category.toLowerCase() as CategoryId)
+      : null;
+  const catLabel = selectedCategory?.name ?? cat?.label;
   const dateText = formatPaymentDate(draft.paymentDate);
 
   return (
@@ -846,7 +1165,7 @@ function ScanCard({
                 >
                   <Ionicons name={cat.icon} size={11} color={cat.color} />
                   <Text style={[styles.payTagText, { color: cat.color }]}>
-                    {cat.label}
+                    {catLabel}
                   </Text>
                 </View>
               ) : (
@@ -922,43 +1241,25 @@ function ScanCard({
           </View>
           <View>
             <Text style={styles.fieldLabel}>카테고리</Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ gap: 6 }}
-            >
-              {CATEGORIES.map((c) => {
-                const active = draft.category?.toLowerCase() === c.id;
-                return (
-                  <TouchableOpacity
-                    key={c.id}
-                    onPress={() => onChange({ category: c.id.toUpperCase() })}
-                    style={[
-                      styles.catChip,
-                      { backgroundColor: '#FFFFFF' },
-                      active && {
-                        backgroundColor: `${c.color}1A`,
-                        borderColor: c.color,
-                      },
-                    ]}
-                  >
-                    <Ionicons
-                      name={c.icon}
-                      size={12}
-                      color={active ? c.color : '#6B7280'}
-                    />
-                    <Text
-                      style={[
-                        styles.catChipText,
-                        active && { color: c.color, fontWeight: '700' },
-                      ]}
-                    >
-                      {c.label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
+            <CategoryPicker
+              compact
+              selectedId={selectedCategoryId}
+              recommendedCategoryId={item.recommendedCategoryId}
+              onSelect={(categoryId) =>
+                onChange({
+                  categoryId,
+                  categoryAutoApplied: false,
+                  userSelectedCategory: true,
+                })
+              }
+            />
+            {item.recommendedCategoryId != null && !item.userSelectedCategory && (
+              <Text style={styles.inputHint}>
+                {item.categoryAutoApplied
+                  ? `선택 이력 ${item.categoryMatchedCount}회 · 자동 적용`
+                  : `선택 이력 ${item.categoryMatchedCount}회 · 추천 카테고리를 확인해 주세요.`}
+              </Text>
+            )}
           </View>
           <View style={{ marginTop: 10 }}>
             <Text style={styles.fieldLabel}>메모</Text>
@@ -1021,45 +1322,6 @@ function ScanCard({
   );
 }
 
-function FieldEditable({
-  label,
-  value,
-  displayValue,
-  onChange,
-  placeholder,
-  multiline,
-  keyboardType,
-}: {
-  label: string;
-  value: string;
-  displayValue?: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-  multiline?: boolean;
-  keyboardType?: 'default' | 'number-pad';
-}) {
-  const [focused, setFocused] = useState(false);
-
-  return (
-    <View style={{ marginBottom: 12 }}>
-      <Text style={styles.fieldLabel}>{label}</Text>
-      <TextInput
-        style={[
-          styles.input,
-          multiline && { minHeight: 60, textAlignVertical: 'top' },
-        ]}
-        value={focused ? value : (displayValue ?? value)}
-        onChangeText={onChange}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-        placeholder={placeholder}
-        placeholderTextColor="#9CA3AF"
-        multiline={multiline}
-        keyboardType={keyboardType ?? 'default'}
-      />
-    </View>
-  );
-}
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F9FAFB' },
@@ -1086,8 +1348,6 @@ const styles = StyleSheet.create({
 
   scroll: { padding: 16, paddingBottom: 24 },
 
-  heading: { fontSize: 22, fontWeight: '800', color: '#111827', marginTop: 8 },
-  subheading: { color: '#6B7280', fontSize: 13, lineHeight: 20, marginTop: 6, marginBottom: 16 },
 
   bigPrimary: {
     flexDirection: 'row',
@@ -1097,14 +1357,13 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 12,
   },
   bigPrimaryText: { color: '#FFFFFF', fontWeight: '800', fontSize: 15 },
 
   bigSecondary: {
     flexDirection: 'row',
     gap: 10,
-    backgroundColor: '#FEF3C7',
+    backgroundColor: '#FFFBEB',
     paddingVertical: 16,
     borderRadius: 14,
     alignItems: 'center',
@@ -1134,7 +1393,6 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   cardSubLabel: { color: '#9CA3AF', fontSize: 12 },
-  clearText: { color: '#9CA3AF', fontSize: 13 },
 
   textarea: {
     height: 180,
@@ -1158,7 +1416,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginTop: 12,
   },
-  parseBtnText: { color: '#FFFFFF', fontWeight: '800', fontSize: 15 },
 
   fieldLabel: {
     fontSize: 11,
@@ -1177,7 +1434,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E5E7EB',
   },
-  catChipText: { color: '#6B7280', fontSize: 12, fontWeight: '600' },
   input: {
     backgroundColor: '#F9FAFB',
     borderWidth: 1,
@@ -1213,7 +1469,6 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     marginTop: 12,
   },
-  registerBtnText: { color: '#FFFFFF', fontWeight: '800', fontSize: 15 },
 
   countRow: {
     flexDirection: 'row',
@@ -1222,7 +1477,6 @@ const styles = StyleSheet.create({
     marginTop: 10,
     marginBottom: 10,
   },
-  countText: { color: '#374151', fontSize: 13, fontWeight: '700' },
 
   helperRow: {
     flexDirection: 'row',
@@ -1377,4 +1631,223 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   placeholderText: { color: '#9CA3AF', fontSize: 13, marginTop: 8 },
+
+  emptyTitle: { fontSize: 22, fontWeight: '800', color: '#111827', marginTop: 8 },
+  emptySub: { color: '#6B7280', fontSize: 13, lineHeight: 20, marginTop: 8 },
+
+  featureRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 24,
+    marginBottom: 24,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#F3F4F6',
+  },
+  featureItem: { alignItems: 'center', flex: 1 },
+  featureIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: '#FFFBEB',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6,
+  },
+  featureLabel: { color: '#374151', fontSize: 12, fontWeight: '600' },
+
+  bigGhost: {
+    flexDirection: 'row',
+    gap: 10,
+    paddingVertical: 14,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#FFFFFF',
+  },
+  bigGhostText: { color: '#374151', fontWeight: '700', fontSize: 14 },
+
+  tipBox: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'flex-start',
+    backgroundColor: '#F3F4F6',
+    padding: 12,
+    borderRadius: 12,
+    marginTop: 16,
+  },
+  tipBoxText: { color: '#6B7280', fontSize: 12, lineHeight: 18, flex: 1 },
+
+  aiNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#EEF2FF',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+  },
+  aiBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#7C3AED',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  aiBadgeText: { color: '#FFFFFF', fontSize: 10, fontWeight: '700' },
+  aiNoticeText: { color: '#3730A3', fontSize: 11, lineHeight: 16, flex: 1 },
+
+  warnNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#FFFBEB',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    marginTop: 10,
+  },
+
+  readonlyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minHeight: 42,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#F9FAFB',
+  },
+  readonlyText: { color: '#111827', fontSize: 14, fontWeight: '600' },
+  inputHint: { marginTop: 6, color: '#9CA3AF', fontSize: 11, lineHeight: 16 },
+  memoInput: { minHeight: 60 },
+  feedbackBox: {
+    flexDirection: 'row',
+    gap: 6,
+    backgroundColor: '#F5F3FF',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginTop: 10,
+    alignItems: 'center',
+  },
+  feedbackText: { color: '#6D28D9', fontSize: 11, flex: 1, lineHeight: 16 },
+  sourceCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#FFFFFF',
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#F3F4F6',
+  },
+  sourceIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: '#FFFBEB',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sourceTitle: { color: '#111827', fontWeight: '700', fontSize: 14 },
+  sourceMeta: { color: '#6B7280', fontSize: 12, marginTop: 2 },
+
+  totalCard: { flexDirection: 'row', alignItems: 'center', paddingVertical: 18 },
+  totalLabel: { color: '#6B7280', fontWeight: '600', fontSize: 13 },
+  totalInput: {
+    flex: 1,
+    marginLeft: 12,
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#111827',
+    textAlign: 'right',
+  },
+  totalSuffix: {
+    color: '#111827',
+    fontWeight: '700',
+    fontSize: 16,
+    marginLeft: 4,
+  },
+
+  reviewBottomBar: {
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 24,
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+  },
+  reviewSaveBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#3B82F6',
+    paddingVertical: 14,
+    borderRadius: 14,
+  },
+
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'flex-end',
+  },
+  modalCard: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+    paddingTop: 12,
+    paddingBottom: 32,
+  },
+  grabber: {
+    alignSelf: 'center',
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#D1D5DB',
+    marginBottom: 20,
+  },
+  modalHead: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  modalTitle: { fontSize: 16, fontWeight: '800', color: '#111827' },
+  modalSub: { color: '#6B7280', fontSize: 12, marginTop: 6, lineHeight: 17 },
+  modalInput: {
+    marginTop: 14,
+    minHeight: 180,
+    maxHeight: 260,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 12,
+    padding: 12,
+    fontSize: 13,
+    color: '#111827',
+    backgroundColor: '#F9FAFB',
+  },
+  modalConfirm: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 14,
+    backgroundColor: ACCENT,
+    paddingVertical: 14,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalConfirmText: { color: '#FFFFFF', fontWeight: '800', fontSize: 14 },
 });

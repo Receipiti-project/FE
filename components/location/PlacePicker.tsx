@@ -169,6 +169,8 @@ export default function PlacePicker({
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <View style={styles.sheet}>
+          <View style={styles.grabber} />
+
           <View style={styles.header}>
             <Text style={styles.title}>위치 선택</Text>
             <TouchableOpacity onPress={onClose} hitSlop={12} disabled={busy}>
@@ -310,12 +312,20 @@ const styles = StyleSheet.create({
   },
   sheet: {
     backgroundColor: '#F9FAFB',
-    borderTopLeftRadius: 22,
-    borderTopRightRadius: 22,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     paddingHorizontal: 20,
-    paddingTop: 16,
+    paddingTop: 12,
     paddingBottom: 24,
     height: '88%',
+  },
+  grabber: {
+    alignSelf: 'center',
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#D1D5DB',
+    marginBottom: 20,
   },
   header: {
     flexDirection: 'row',
@@ -339,7 +349,7 @@ const styles = StyleSheet.create({
   searchBtn: {
     width: 44,
     borderRadius: 10,
-    backgroundColor: '#111827',
+    backgroundColor: '#3B82F6',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -356,7 +366,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#F3F4F6',
   },
-  cardActive: { borderColor: '#111827', borderWidth: 2 },
+  cardActive: { borderColor: '#3B82F6', borderWidth: 2 },
   radio: {
     width: 18,
     height: 18,
@@ -367,12 +377,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginTop: 2,
   },
-  radioActive: { borderColor: '#111827' },
+  radioActive: { borderColor: '#3B82F6' },
   radioDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#111827',
+    backgroundColor: '#3B82F6',
   },
   cardHead: {
     flexDirection: 'row',
@@ -401,7 +411,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  checkboxOn: { backgroundColor: '#111827', borderColor: '#111827' },
+  checkboxOn: { backgroundColor: '#3B82F6', borderColor: '#3B82F6' },
   rememberText: { fontSize: 12, color: '#374151', fontWeight: '600' },
   onlineBtn: {
     flexDirection: 'row',
@@ -428,7 +438,7 @@ const styles = StyleSheet.create({
     paddingVertical: 13,
     borderRadius: 12,
     alignItems: 'center',
-    backgroundColor: '#111827',
+    backgroundColor: '#3B82F6',
   },
   confirmBtnOff: { backgroundColor: '#D1D5DB' },
   confirmBtnText: { color: '#FFFFFF', fontWeight: '700', fontSize: 14 },

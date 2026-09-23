@@ -61,6 +61,31 @@ export function stripBranchName(storeName: string): string {
   return parts.slice(0, -1).join(' ');
 }
 
+function compareName(name: string): string {
+  return squash(name)
+    .replace(/\(주\)|주식회사/g, '')
+    .replace(/[^0-9A-Za-z가-힣]/g, '')
+    .toUpperCase();
+}
+
+export function namesRelated(storeName: string, placeName: string): boolean {
+  const a = compareName(storeName);
+  const b = compareName(placeName);
+  if (a.length < 2 || b.length < 2) return false;
+  if (a.includes(b) || b.includes(a)) return true;
+  if (a[0] !== b[0]) return false;
+  for (let i = 0; i + 2 <= a.length; i++) {
+    if (b.includes(a.slice(i, i + 2))) return true;
+  }
+  return false;
+}
+
+export function canonicalStoreName(storeName: string, placeName: string): string {
+  return compareName(placeName).includes(compareName(storeName))
+    ? placeName
+    : storeName;
+}
+
 function matchesBranch(place: Place, tokens: string[]): boolean {
   if (tokens.length === 0) return false;
   const name = squash(place.name);
@@ -194,7 +219,9 @@ export async function resolveLocation(
   const exactSingle = totalCount === 1;
   const byBranch = tokens.length > 0 ? pickByBranch(candidates, tokens) : null;
   // 검색 결과가 정확히 한 곳이면 GPS 권한/힌트가 없어도 안전하게 확정한다.
-  const best = byBranch ?? (exactSingle ? candidates[0] : null);
+  const single = exactSingle ? candidates[0] : null;
+  const best =
+    byBranch ?? (single && namesRelated(name, single.name) ? single : null);
 
   if (!best) {
     return {

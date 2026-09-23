@@ -12,7 +12,7 @@ type Props = {
 export default function TopStoreList({ stores, onSelect }: Props) {
   return (
     <View style={styles.section}>
-      <Text style={styles.sectionTitle}>자주 가는 곳</Text>
+      <Text style={styles.sectionTitle}>자주 가는 매장</Text>
       <View style={styles.storeList}>
         {stores.map((s, i) => (
           <Pressable
