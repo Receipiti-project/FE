@@ -32,7 +32,7 @@ const PRIMARY_METHODS: InputMethod[] = [
   {
     id: "receipt",
     title: "영수증 OCR",
-    description: "사진 한 장으로 가맹점·품목·총액까지 자동 인식",
+    description: "사진 한 장으로 가맹점·결제일시·총액까지 자동 인식",
     icon: "scan-outline",
     route: "/register/receipt",
     tone: "#3B82F6",
@@ -131,18 +131,6 @@ export default function RegisterScreen() {
               onPress={() => onSelect(m)}
             />
           ))}
-        </View>
-
-        <View style={styles.tipBox}>
-          <Ionicons
-            name="information-circle-outline"
-            size={16}
-            color="#6B7280"
-          />
-          <Text style={styles.tipBoxText}>
-            AI 추출 결과는 예시 데이터로 보여지며, 
-            서버가 연결되면 실제 인식 결과로 바뀝니다.
-          </Text>
         </View>
 
         <View style={{ height: 24 }} />
@@ -372,16 +360,4 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#6B7280",
   },
-
-  /* tip */
-  tipBox: {
-    flexDirection: "row",
-    gap: 8,
-    alignItems: "flex-start",
-    backgroundColor: "#F3F4F6",
-    padding: 12,
-    borderRadius: 12,
-    marginTop: 24,
-  },
-  tipBoxText: { color: "#6B7280", fontSize: 11, lineHeight: 16, flex: 1 },
 });
