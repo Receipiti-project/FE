@@ -13,6 +13,13 @@ type KakaoLoginResponse = {
   result?: { accessToken?: string };
 };
 
+type LoginCodeExchange = {
+  loginCode: string;
+  request: Promise<string>;
+};
+
+let loginCodeExchange: LoginCodeExchange | null = null;
+
 function tokenIsExpired(token: string): boolean {
   try {
     const encoded = token.split(".")[1];
@@ -59,6 +66,7 @@ export async function restoreAuthToken(): Promise<string | null> {
 }
 
 export async function clearAuthToken(): Promise<void> {
+  loginCodeExchange = null;
   setSessionAuthToken(null);
   await writeStoredToken(null);
 }
@@ -67,7 +75,7 @@ export function getKakaoLoginUrl(): string {
   return apiUrl(KAKAO_LOGIN_PATH);
 }
 
-export async function exchangeLoginCode(loginCode: string): Promise<string> {
+async function requestLoginCodeExchange(loginCode: string): Promise<string> {
   const response = await fetch(apiUrl(LOGIN_CODE_EXCHANGE_PATH), {
     method: "POST",
     headers: {
@@ -86,4 +94,20 @@ export async function exchangeLoginCode(loginCode: string): Promise<string> {
   setSessionAuthToken(accessToken);
   await writeStoredToken(accessToken);
   return accessToken;
+}
+
+export function exchangeLoginCode(loginCode: string): Promise<string> {
+  if (loginCodeExchange?.loginCode === loginCode) {
+    return loginCodeExchange.request;
+  }
+
+  const request = requestLoginCodeExchange(loginCode).catch((error) => {
+    if (loginCodeExchange?.request === request) {
+      loginCodeExchange = null;
+    }
+    throw error;
+  });
+
+  loginCodeExchange = { loginCode, request };
+  return request;
 }
