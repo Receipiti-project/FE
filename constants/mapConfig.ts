@@ -42,6 +42,6 @@ export const ROUTE_COLOR = "#3B82F6";
 
 export const HEATMAP_GRADIENT = {
   colors: ["#3B82F6", "#A855F7", "#F97316", "#EF4444"],
-  startPoints: [0.1, 0.3, 0.6, 0.9],
+  startPoints: [0.05, 0.35, 0.7, 1],
   colorMapSize: 256,
 };

@@ -63,12 +63,13 @@ const MapCanvas = forwardRef<MapView, Props>(function MapCanvas(
         style={StyleSheet.absoluteFillObject}
         provider={PROVIDER_GOOGLE}
         toolbarEnabled={false}
+        showsCompass={false}
         initialRegion={lastRegion.current}
         onRegionChangeComplete={onRegionChangeComplete}
       >
         {mountedKey !== null && (
           <React.Fragment key={mountedKey}>
-            {mode !== "zones" && (
+            {mode === "today" && (
               <PinLayer
                 pins={pins}
                 numbered={mode === "today"}
