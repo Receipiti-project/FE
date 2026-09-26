@@ -1,3 +1,4 @@
+import HeatLegend from "@/components/map/HeatLegend";
 import MapCanvas from "@/components/map/MapCanvas";
 import MapControls from "@/components/map/MapControls";
 import ModeTabs from "@/components/map/ModeTabs";
@@ -235,6 +236,7 @@ export default function MapScreen() {
               <Text style={styles.loadingText}>위치 확인 중</Text>
             </View>
           )}
+          {mode === "heatmap" && heatmapPoints.length > 0 && <HeatLegend />}
           <SummaryOverlay
             mode={mode}
             summary={summary}

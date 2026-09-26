@@ -57,6 +57,8 @@ export type MapData = {
   reload: () => void;
 };
 
+const HEAT_WEIGHT_FLOOR = 0.15;
+
 export function localDate(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -288,15 +290,35 @@ export function useMapData(
     [allPins, inRange]
   );
 
-  const heatmapPoints = useMemo(
-    () =>
-      allPins.filter(inRange).map((p) => ({
-        latitude: p.latitude,
-        longitude: p.longitude,
-        weight: Math.log10(p.amount + 1),
-      })),
-    [allPins, inRange]
-  );
+  const heatmapPoints = useMemo(() => {
+    const grouped = new Map<string, LatLng & { total: number }>();
+
+    for (const pin of allPins.filter(inRange)) {
+      const key = `${pin.latitude.toFixed(4)},${pin.longitude.toFixed(4)}`;
+      const spot = grouped.get(key) ?? {
+        latitude: pin.latitude,
+        longitude: pin.longitude,
+        total: 0,
+      };
+      spot.total += pin.amount;
+      grouped.set(key, spot);
+    }
+
+    const spots = [...grouped.values()];
+    const scaled = spots.map((spot) => Math.sqrt(spot.total));
+    const min = Math.min(...scaled);
+    const span = Math.max(...scaled) - min;
+
+    return spots.map(({ latitude, longitude }, idx) => ({
+      latitude,
+      longitude,
+      weight:
+        span > 0
+          ? HEAT_WEIGHT_FLOOR +
+            (1 - HEAT_WEIGHT_FLOOR) * ((scaled[idx] - min) / span)
+          : 1,
+    }));
+  }, [allPins, inRange]);
 
   const summary = useMemo(() => {
     const useServerTotals = timeRange === "all" && mergedRoute.complete;

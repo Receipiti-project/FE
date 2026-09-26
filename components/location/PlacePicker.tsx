@@ -2,6 +2,7 @@ import { getLocationHint } from '@/scripts/currentLocation';
 import { confirmLocation, hasBranchToken } from '@/scripts/locationPipeline';
 import { haversineKm, LatLng } from '@/scripts/mapGeo';
 import { Place, searchPlaces } from '@/scripts/placeSearch';
+import { useKeyboardHeight } from '@/scripts/useKeyboardHeight';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useRef, useState } from 'react';
 import {
@@ -85,6 +86,7 @@ export default function PlacePicker({
   initialRef.current = { initialCandidates, suggested, near, rememberDefault };
 
   const branchFixed = hasBranchToken(storeName);
+  const keyboardHeight = useKeyboardHeight();
 
   const search = async (q: string, center: LatLng | null) => {
     const term = q.trim();
@@ -165,7 +167,10 @@ export default function PlacePicker({
       }}
     >
       <KeyboardAvoidingView
-        style={styles.backdrop}
+        style={[
+          styles.backdrop,
+          Platform.OS === 'android' && { paddingBottom: keyboardHeight },
+        ]}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <View style={styles.sheet}>

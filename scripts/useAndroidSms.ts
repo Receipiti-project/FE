@@ -1,8 +1,7 @@
 import { useState, useCallback } from 'react';
 import { Platform, PermissionsAndroid, Alert, Linking } from 'react-native';
+import SmsAndroid from 'react-native-get-sms-android';
 import { smsToExpense, PipelineResult } from './smsPipeline';
-
-const SmsAndroid = require('react-native-get-sms-android');
 
 export interface ScannedMessage {
   id: string;

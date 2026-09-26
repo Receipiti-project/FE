@@ -57,7 +57,7 @@ export async function smsToExpense(
     return {
       data: fillPaymentDateFallback(regex, now),
       source: 'regex',
-      llmCalled: true,
+      llmCalled: false,
       confidence: 'low',
       elapsedMs: Date.now() - t0,
     };

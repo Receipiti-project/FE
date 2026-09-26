@@ -42,6 +42,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useEffect, useRef, useState } from 'react';
 import { router } from 'expo-router';
+import { useKeyboardHeight } from '../../scripts/useKeyboardHeight';
 
 const HITSLOP = { top: 12, bottom: 12, left: 12, right: 12 } as const;
 const ACCENT = '#EF4444';
@@ -78,6 +79,7 @@ const formatDuration = (seconds: number): string => {
 
 export default function VoiceScreen() {
   const { categories } = useCategories();
+  const keyboardHeight = useKeyboardHeight();
   const [step, setStep] = useState<Step>('idle');
   const [recordingOpen, setRecordingOpen] = useState(false);
   const [elapsed, setElapsed] = useState(0);
@@ -434,8 +436,11 @@ export default function VoiceScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={[
+          { flex: 1 },
+          Platform.OS === 'android' && { paddingBottom: keyboardHeight },
+        ]}
       >
       <View style={styles.topBar}>
         <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn} hitSlop={HITSLOP}>

@@ -11,8 +11,8 @@ export default function HeatmapLayer({ points }: Props) {
   return (
     <Heatmap
       points={points}
-      radius={50}
-      opacity={0.7}
+      radius={40}
+      opacity={0.8}
       gradient={HEATMAP_GRADIENT}
     />
   );

@@ -412,7 +412,8 @@ export const styles = StyleSheet.create({
   },
   modalInput: {
     marginTop: 14,
-    minHeight: 200,
+    minHeight: 120,
+    flexShrink: 1,
     maxHeight: 280,
     borderWidth: 1,
     borderColor: "#E5E7EB",

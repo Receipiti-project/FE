@@ -32,6 +32,7 @@ import {
   resolveCategoryRecommendation,
 } from "@/services/api/categoryApi";
 import { expenditureDateParam } from "@/services/api/expenditureApi";
+import { useKeyboardHeight } from "@/scripts/useKeyboardHeight";
 
 const HITSLOP = { top: 12, bottom: 12, left: 12, right: 12 } as const;
 
@@ -73,6 +74,7 @@ const ANALYSIS_STEPS = [
 
 export default function ReceiptScreen() {
   const { categories } = useCategories();
+  const keyboardHeight = useKeyboardHeight();
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [step, setStep] = useState<Step>("idle");
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -253,8 +255,11 @@ export default function ReceiptScreen() {
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        style={[
+          { flex: 1 },
+          Platform.OS === "android" && { paddingBottom: keyboardHeight },
+        ]}
       >
         <View style={styles.topBar}>
           <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn} hitSlop={HITSLOP}>

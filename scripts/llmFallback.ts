@@ -1,5 +1,5 @@
 import { ParsedExpense } from './smsLexer';
-import { CategoryType, Currency } from './types';
+import { CategoryType } from './types';
 
 const OPENAI_API_KEY = process.env.EXPO_PUBLIC_OPENAI_API_KEY ?? '';
 

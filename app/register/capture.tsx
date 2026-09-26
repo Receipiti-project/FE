@@ -43,6 +43,7 @@ import {
   ResolvedPlace,
   resolveExpensePlace,
 } from "@/scripts/expenseRegister";
+import { useKeyboardHeight } from "@/scripts/useKeyboardHeight";
 import { Place } from "@/scripts/placeSearch";
 
 const HITSLOP = { top: 12, bottom: 12, left: 12, right: 12 } as const;
@@ -124,6 +125,7 @@ const SOURCE_LABEL_MAP: Record<CaptureSource, { icon: keyof typeof Ionicons.glyp
 
 export default function CaptureScreen() {
   const { categories } = useCategories();
+  const keyboardHeight = useKeyboardHeight();
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [step, setStep] = useState<Step>("idle");
   const [analysisStep, setAnalysisStep] = useState(0);
@@ -440,8 +442,11 @@ export default function CaptureScreen() {
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        style={[
+          { flex: 1 },
+          Platform.OS === "android" && { paddingBottom: keyboardHeight },
+        ]}
       >
         <View style={styles.topBar}>
           <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn} hitSlop={HITSLOP}>
@@ -858,6 +863,8 @@ function PasteTextModal({
   onClose: () => void;
   onConfirm: () => void;
 }) {
+  const keyboardHeight = useKeyboardHeight();
+
   return (
     <Modal
       visible={open}
@@ -865,11 +872,14 @@ function PasteTextModal({
       transparent
       onRequestClose={onClose}
     >
-      <View style={styles.modalBackdrop}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
-          style={styles.modalCard}
-        >
+      <KeyboardAvoidingView
+        style={[
+          styles.modalBackdrop,
+          Platform.OS === "android" && { paddingBottom: keyboardHeight },
+        ]}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
+        <View style={styles.modalCard}>
           <View style={styles.modalHead}>
             <Text style={styles.modalTitle}>결제 메시지 붙여넣기</Text>
             <TouchableOpacity onPress={onClose} hitSlop={HITSLOP}>
@@ -895,8 +905,8 @@ function PasteTextModal({
             <Ionicons name="sparkles" size={16} color="#FFFFFF" />
             <Text style={styles.modalConfirmText}>분석해서 채우기</Text>
           </TouchableOpacity>
-        </KeyboardAvoidingView>
-      </View>
+        </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
