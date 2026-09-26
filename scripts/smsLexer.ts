@@ -1,5 +1,5 @@
 import { guessCategory } from './storeCategory';
-import { InputType, Currency, CategoryType } from './types';
+import { InputType, Currency } from './types';
 
 export type TokenType =
   | 'header'
