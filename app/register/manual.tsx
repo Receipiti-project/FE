@@ -27,6 +27,7 @@ import {
 } from "@/services/api/categoryApi";
 import { useCategories } from "@/contexts/CategoryContext";
 import { CategoryPicker } from "@/components/category-picker";
+import { useKeyboardHeight } from "@/scripts/useKeyboardHeight";
 import DateTimePicker from "@react-native-community/datetimepicker";
 
 const HITSLOP = { top: 12, bottom: 12, left: 12, right: 12 } as const;
@@ -74,6 +75,7 @@ const DEFAULT_FORM: Form = {
 
 export default function ManualScreen() {
   const { categories } = useCategories();
+  const keyboardHeight = useKeyboardHeight();
   const [form, setForm] = useState<Form>(DEFAULT_FORM);
   const [saving, setSaving] = useState(false);
   const [androidPickerMode, setAndroidPickerMode] = useState<PickerMode | null>(null);
@@ -170,8 +172,11 @@ export default function ManualScreen() {
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        style={[
+          { flex: 1 },
+          Platform.OS === "android" && { paddingBottom: keyboardHeight },
+        ]}
       >
         {/* 헤더 */}
         <View style={styles.topBar}>

@@ -30,6 +30,7 @@ import {
   resolveCategoryRecommendation,
 } from '../../services/api/categoryApi';
 import { enumCategoryId } from '../../scripts/storeCategory';
+import { useKeyboardHeight } from '../../scripts/useKeyboardHeight';
 import { formatPaymentDate } from '../../scripts/dateDisplay';
 import { expenditureDateParam } from '../../services/api/expenditureApi';
 import { smsToExpense } from '../../scripts/smsPipeline';
@@ -119,6 +120,7 @@ type ScanItem = {
 
 export default function SmsScreen() {
   const { categories } = useCategories();
+  const keyboardHeight = useKeyboardHeight();
   const [step, setStep] = useState<Step>('input');
   const [input, setInput] = useState('');
   const [pasteOpen, setPasteOpen] = useState(false);
@@ -589,8 +591,11 @@ export default function SmsScreen() {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={[
+            { flex: 1 },
+            Platform.OS === 'android' && { paddingBottom: keyboardHeight },
+          ]}
         >
           <View style={styles.topBar}>
             <TouchableOpacity
@@ -740,8 +745,11 @@ export default function SmsScreen() {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={[
+            { flex: 1 },
+            Platform.OS === 'android' && { paddingBottom: keyboardHeight },
+          ]}
         >
           <View style={styles.topBar}>
             <TouchableOpacity
@@ -1037,6 +1045,8 @@ function PasteSmsModal({
   onClose: () => void;
   onConfirm: () => void;
 }) {
+  const keyboardHeight = useKeyboardHeight();
+
   return (
     <Modal
       visible={open}
@@ -1046,11 +1056,14 @@ function PasteSmsModal({
         if (!loading) onClose();
       }}
     >
-      <View style={styles.modalBackdrop}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={styles.modalCard}
-        >
+      <KeyboardAvoidingView
+        style={[
+          styles.modalBackdrop,
+          Platform.OS === 'android' && { paddingBottom: keyboardHeight },
+        ]}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <View style={styles.modalCard}>
           <View style={styles.grabber} />
           <View style={styles.modalHead}>
             <Text style={styles.modalTitle}>결제 문자 붙여넣기</Text>
@@ -1087,8 +1100,8 @@ function PasteSmsModal({
               </>
             )}
           </TouchableOpacity>
-        </KeyboardAvoidingView>
-      </View>
+        </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -1839,8 +1852,9 @@ const styles = StyleSheet.create({
   modalSub: { color: '#6B7280', fontSize: 12, marginTop: 6, lineHeight: 17 },
   modalInput: {
     marginTop: 14,
-    minHeight: 180,
-    maxHeight: 260,
+    minHeight: 120,
+    maxHeight: 220,
+    flexShrink: 1,
     borderWidth: 1,
     borderColor: '#E5E7EB',
     borderRadius: 12,
