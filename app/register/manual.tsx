@@ -53,7 +53,6 @@ type Form = {
   expenditureDate: string; // "YYYY-MM-DDTHH:mm"
   categoryId: number | null;
   recommendedCategoryId: number | null;
-  categoryConfidence: number;
   matchedCount: number;
   categoryAutoApplied: boolean;
   userEditedCategory: boolean;
@@ -66,7 +65,6 @@ const DEFAULT_FORM: Form = {
   expenditureDate: nowAsDatetimeLocal(),
   categoryId: null,
   recommendedCategoryId: null,
-  categoryConfidence: 0,
   matchedCount: 0,
   categoryAutoApplied: false,
   userEditedCategory: false,
@@ -99,7 +97,6 @@ export default function ManualScreen() {
         ? prev.categoryId
         : decision.selectedCategoryId,
       recommendedCategoryId: decision.recommendedCategoryId,
-      categoryConfidence: decision.confidence,
       matchedCount: decision.matchedCount,
       categoryAutoApplied: decision.autoApplicable,
     }));
@@ -325,7 +322,7 @@ export default function ManualScreen() {
             {form.recommendedCategoryId && (
               <Text style={styles.inputHint}>
                 {form.categoryAutoApplied
-                  ? `선택 이력 ${form.matchedCount}회 · 신뢰도 ${Math.round(form.categoryConfidence * 100)}%로 자동 적용했어요.`
+                  ? `선택 이력 ${form.matchedCount}회 · 자동 적용했어요.`
                   : `선택 이력 ${form.matchedCount}회 · 추천 카테고리를 확인해 주세요.`}
               </Text>
             )}
