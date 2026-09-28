@@ -27,7 +27,7 @@ export type CategoryRecommendationDecision = {
   autoApplicable: boolean;
 };
 
-export const CATEGORY_AUTO_APPLY_MIN_MATCHED_COUNT = 2;
+export const CATEGORY_AUTO_APPLY_MIN_MATCHED_COUNT = 1;
 
 /** 서버가 추천한 카테고리가 현재 사용자의 카테고리 목록에 있으면 선택합니다. */
 export function resolveRecommendedCategoryId(
@@ -45,8 +45,8 @@ export function resolveRecommendedCategoryId(
 }
 
 /**
- * 추천은 한 번의 이력만 있어도 노출하되, 2회 이상 선택된 추천은
- * 사용자 확인 없이 선택 상태로 만듭니다.
+ * 같은 가맹점에서 한 번 이상 선택한 이력이 있으면 두 번째 등록부터
+ * 사용자 확인 없이 추천 카테고리를 선택 상태로 만듭니다.
  */
 export function resolveCategoryRecommendation(
   recommendation: CategoryRecommendation | null,
