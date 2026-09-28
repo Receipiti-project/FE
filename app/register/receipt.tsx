@@ -32,6 +32,10 @@ import {
   resolveCategoryRecommendation,
 } from "@/services/api/categoryApi";
 import { expenditureDateParam } from "@/services/api/expenditureApi";
+import {
+  ResolvedPlace,
+  resolveExpensePlace,
+} from "@/scripts/expenseRegister";
 import { useKeyboardHeight } from "@/scripts/useKeyboardHeight";
 
 const HITSLOP = { top: 12, bottom: 12, left: 12, right: 12 } as const;
@@ -55,7 +59,10 @@ type Draft = {
   categoryAutoApplied: boolean;
   userSelectedCategory: boolean;
   memo: string;
+  placeId?: string;
   address?: string;
+  latitude?: number;
+  longitude?: number;
   isManualEntry?: boolean;
 };
 
@@ -69,7 +76,7 @@ const PAYMENT_METHODS: PaymentMethod[] = [
 const ANALYSIS_STEPS = [
   { id: "prepare", label: "이미지 준비" },
   { id: "analyze", label: "영수증 분석 요청" },
-  { id: "category", label: "카테고리 추천 조회" },
+  { id: "enrich", label: "카테고리·위치 조회" },
 ];
 
 export default function ReceiptScreen() {
@@ -89,10 +96,11 @@ export default function ReceiptScreen() {
 
   const applyOcrResult = (
     res: ReceiptOcrResult,
-    recommendation: ReturnType<typeof resolveCategoryRecommendation>
+    recommendation: ReturnType<typeof resolveCategoryRecommendation>,
+    place: ResolvedPlace | null
   ) => {
     setDraft({
-      storeName: res.storeName,
+      storeName: place?.placeName ?? res.storeName,
       purchasedAt: res.purchasedAt,
       purchasedAtIso: res.purchasedAtIso,
       totalAmount: res.totalAmount,
@@ -104,7 +112,10 @@ export default function ReceiptScreen() {
       categoryAutoApplied: recommendation.autoApplicable,
       userSelectedCategory: false,
       memo: "",
-      address: res.location?.address,
+      placeId: place?.placeId,
+      address: place?.address ?? res.location?.address,
+      latitude: place?.latitude ?? res.location?.lat,
+      longitude: place?.longitude ?? res.location?.lng,
       isManualEntry: res.isManualEntry,
     });
     setStep("review");
@@ -121,14 +132,17 @@ export default function ReceiptScreen() {
         setAnalysisStep(stage === "preparing" ? 0 : 1);
       });
       setAnalysisStep(2);
-      const recommendation = res.storeName
-        ? await getCategoryRecommendation(res.storeName).catch(() => null)
-        : null;
+      const [recommendation, place] = res.storeName
+        ? await Promise.all([
+            getCategoryRecommendation(res.storeName).catch(() => null),
+            resolveExpensePlace(res.storeName),
+          ])
+        : [null, null];
       const decision = resolveCategoryRecommendation(
         recommendation,
         categories
       );
-      applyOcrResult(res, decision);
+      applyOcrResult(res, decision, place);
     } catch (e) {
       const msg = (e as Error)?.message ?? "";
       if (msg.startsWith("AUTH_EXPIRED:")) {
@@ -162,11 +176,14 @@ export default function ReceiptScreen() {
   const updateDraft = (patch: Partial<Draft>) =>
     setDraft((prev) => (prev ? { ...prev, ...patch } : prev));
 
-  const reclassifyDraftStore = async () => {
+  const enrichDraftStore = async () => {
     const storeName = draft?.storeName.trim();
     if (!storeName) return;
 
-    const recommendation = await getCategoryRecommendation(storeName).catch(() => null);
+    const [recommendation, place] = await Promise.all([
+      getCategoryRecommendation(storeName).catch(() => null),
+      resolveExpensePlace(storeName),
+    ]);
     const decision = resolveCategoryRecommendation(
       recommendation,
       categories
@@ -177,6 +194,11 @@ export default function ReceiptScreen() {
       const userEditedCategory = prev.userSelectedCategory;
       return {
         ...prev,
+        storeName: place?.placeName ?? storeName,
+        placeId: place?.placeId,
+        address: place?.address,
+        latitude: place?.latitude,
+        longitude: place?.longitude,
         categoryId: userEditedCategory ? prev.categoryId : decision.selectedCategoryId,
         initialCategoryId: decision.recommendedCategoryId,
         categoryConfidence: userEditedCategory
@@ -316,7 +338,7 @@ export default function ReceiptScreen() {
                 style={styles.input}
                 value={draft?.storeName ?? ""}
                 onChangeText={(v) => updateDraft({ storeName: v })}
-                onEndEditing={() => void reclassifyDraftStore()}
+                onEndEditing={() => void enrichDraftStore()}
                 placeholder="가맹점명을 입력하세요"
                 placeholderTextColor="#9CA3AF"
               />
