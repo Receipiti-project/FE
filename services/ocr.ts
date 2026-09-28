@@ -184,6 +184,10 @@ type ReceiptSavePayload = {
   categoryId?: number;
   defaultCategoryId?: number;
   memo?: string;
+  placeId?: string;
+  address?: string;
+  latitude?: number;
+  longitude?: number;
   [key: string]: unknown;
 };
 
@@ -231,6 +235,10 @@ export async function saveTransaction(
           expenditureDate,
           memo: d.memo ?? "",
           currency: "KRW",
+          placeId: d.placeId,
+          address: d.address,
+          latitude: d.latitude,
+          longitude: d.longitude,
         },
         inputTypeForSource(source)
       );
