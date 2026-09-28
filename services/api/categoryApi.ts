@@ -45,8 +45,8 @@ export function resolveRecommendedCategoryId(
 }
 
 /**
- * 추천은 한 번의 이력만 있어도 노출하되, 2회 이상 선택되고 서버가
- * 자동 적용 가능하다고 판단한 추천만 사용자 확인 없이 선택합니다.
+ * 추천은 한 번의 이력만 있어도 노출하되, 2회 이상 선택된 추천은
+ * 사용자 확인 없이 선택 상태로 만듭니다.
  */
 export function resolveCategoryRecommendation(
   recommendation: CategoryRecommendation | null,
@@ -60,7 +60,6 @@ export function resolveCategoryRecommendation(
   const matchedCount = recommendation?.matchedCount ?? 0;
   const autoApplicable = Boolean(
     recommendedCategoryId &&
-      recommendation?.autoApplicable &&
       matchedCount >= CATEGORY_AUTO_APPLY_MIN_MATCHED_COUNT
   );
 
