@@ -121,11 +121,18 @@ function isNearby(from?: LatLng, here?: LatLng): boolean {
 }
 
 function preferSpendingPlaces(candidates: Place[], storeName: string): Place[] {
-  const keepParking = /주차/.test(storeName);
-  const spending = candidates.filter(
-    (p) => isSpendingPlace(p) && (keepParking || !isParkingPlace(p))
-  );
-  return spending.length > 0 ? spending : candidates;
+  const usable = /주차/.test(storeName)
+    ? candidates
+    : candidates.filter((p) => !isParkingPlace(p));
+  const spending = usable.filter(isSpendingPlace);
+  return spending.length > 0 ? spending : usable;
+}
+
+function brandMatches(storeName: string, placeName: string): boolean {
+  const a = compareName(headToken(storeName));
+  const b = compareName(headToken(placeName));
+  if (a.length < 2 || b.length < 2) return false;
+  return a.includes(b) || b.includes(a);
 }
 
 function headToken(name: string): string {
@@ -144,9 +151,7 @@ function pickByBranch(
 ): Place | null {
   return (
     candidates.find(
-      (p) =>
-        matchesBranch(p, tokens) &&
-        namesRelated(headToken(storeName), headToken(p.name))
+      (p) => matchesBranch(p, tokens) && brandMatches(storeName, p.name)
     ) ?? null
   );
 }
@@ -239,6 +244,10 @@ export async function resolveLocation(
   }
 
   const candidates = preferSpendingPlaces(places, name);
+  if (candidates.length === 0) {
+    return empty('notFound', Date.now() - t0);
+  }
+
   const exactSingle = totalCount === 1;
   // 상호가 그대로 일치하는 후보는 검색 순위와 무관하게 같은 가게로 본다.
   const byName = pickByName(candidates, name);
