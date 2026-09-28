@@ -11,6 +11,7 @@ import {
   NonPlaceReason,
 } from './onlineMerchant';
 import {
+  isParkingPlace,
   isPlaceSearchConfigured,
   isSpendingPlace,
   Place,
@@ -119,13 +120,35 @@ function isNearby(from?: LatLng, here?: LatLng): boolean {
   );
 }
 
-function preferSpendingPlaces(candidates: Place[]): Place[] {
-  const spending = candidates.filter(isSpendingPlace);
+function preferSpendingPlaces(candidates: Place[], storeName: string): Place[] {
+  const keepParking = /주차/.test(storeName);
+  const spending = candidates.filter(
+    (p) => isSpendingPlace(p) && (keepParking || !isParkingPlace(p))
+  );
   return spending.length > 0 ? spending : candidates;
 }
 
-function pickByBranch(candidates: Place[], tokens: string[]): Place | null {
-  return candidates.find((p) => matchesBranch(p, tokens)) ?? null;
+function headToken(name: string): string {
+  return name.trim().split(/\s+/)[0] ?? '';
+}
+
+function pickByName(candidates: Place[], storeName: string): Place | null {
+  const target = compareName(storeName);
+  return candidates.find((p) => compareName(p.name) === target) ?? null;
+}
+
+function pickByBranch(
+  candidates: Place[],
+  tokens: string[],
+  storeName: string
+): Place | null {
+  return (
+    candidates.find(
+      (p) =>
+        matchesBranch(p, tokens) &&
+        namesRelated(headToken(storeName), headToken(p.name))
+    ) ?? null
+  );
 }
 
 function pickBest(candidates: Place[], near?: LatLng): Place | null {
@@ -215,13 +238,18 @@ export async function resolveLocation(
     return empty('notFound', Date.now() - t0);
   }
 
-  const candidates = preferSpendingPlaces(places);
+  const candidates = preferSpendingPlaces(places, name);
   const exactSingle = totalCount === 1;
-  const byBranch = tokens.length > 0 ? pickByBranch(candidates, tokens) : null;
+  // 상호가 그대로 일치하는 후보는 검색 순위와 무관하게 같은 가게로 본다.
+  const byName = pickByName(candidates, name);
+  const byBranch =
+    tokens.length > 0 ? pickByBranch(candidates, tokens, name) : null;
   // 검색 결과가 정확히 한 곳이면 GPS 권한/힌트가 없어도 안전하게 확정한다.
   const single = exactSingle ? candidates[0] : null;
   const best =
-    byBranch ?? (single && namesRelated(name, single.name) ? single : null);
+    byName ??
+    byBranch ??
+    (single && namesRelated(name, single.name) ? single : null);
 
   if (!best) {
     return {
@@ -231,11 +259,8 @@ export async function resolveLocation(
     };
   }
 
-  const confidence: 'high' | 'medium' | 'low' = exactSingle
-    ? 'high'
-    : byBranch
-      ? 'medium'
-      : 'low';
+  const confidence: 'high' | 'medium' | 'low' =
+    exactSingle || byName ? 'high' : byBranch ? 'medium' : 'low';
 
   setCachedPlace(name, {
     placeId: best.id,

@@ -24,8 +24,14 @@ export type PlaceSearchResult = {
   totalCount: number;
 };
 
+const PARKING_RE = /주차장|주차타워|입출구/;
+
 export function isSpendingPlace(place: Place): boolean {
   return place.categoryName.trim().length > 0;
+}
+
+export function isParkingPlace(place: Place): boolean {
+  return PARKING_RE.test(place.categoryName) || PARKING_RE.test(place.name);
 }
 
 export function isPlaceSearchConfigured(): boolean {
